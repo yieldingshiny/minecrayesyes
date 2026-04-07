@@ -1803,6 +1803,39 @@ do
         mid.Parent = row
     end
 
+    local _homeRuntimeEnv = (getgenv and getgenv()) or _G
+
+    local function _getLoadedScriptKey()
+        local keyValue = _homeRuntimeEnv and _homeRuntimeEnv.SCRIPT_KEY
+        if keyValue == nil or tostring(keyValue) == "" then
+            return "unknown"
+        end
+        return tostring(keyValue)
+    end
+
+    local function _getKeyTimeRemainingText()
+        local keyInfo = _homeRuntimeEnv and _homeRuntimeEnv.SCRIPT_KEY_INFO
+        if type(keyInfo) ~= "table" then
+            return "unknown"
+        end
+
+        local remainingSeconds = tonumber(keyInfo.remaining_seconds)
+        if remainingSeconds == nil then
+            if keyInfo.expires_at == nil or tostring(keyInfo.expires_at) == "" then
+                return "never"
+            end
+            return "unknown"
+        end
+
+        local verifiedAt = tonumber(_homeRuntimeEnv.SCRIPT_KEY_VERIFIED_AT) or os.time()
+        local elapsed = math.max(0, os.time() - verifiedAt)
+        local remaining = math.max(0, math.floor(remainingSeconds - elapsed))
+        if remaining <= 0 then
+            return "expired"
+        end
+        return _formatCompactDuration(remaining)
+    end
+
     _createLineSectionHeader(leftPanel, 190, "info", 44)
     local feedbackCooldownInfoLbl = Instance.new("TextLabel")
     feedbackCooldownInfoLbl.Size = UDim2.new(1, -16, 0, 14)
@@ -1824,11 +1857,31 @@ do
     sessionInfoLbl.TextXAlignment = Enum.TextXAlignment.Left
     sessionInfoLbl.Text = "current session: …"
     sessionInfoLbl.Parent = leftPanel
+    local keyInfoLbl = Instance.new("TextLabel")
+    keyInfoLbl.Size = UDim2.new(1, -16, 0, 14)
+    keyInfoLbl.Position = UDim2.new(0, 8, 0, 240)
+    keyInfoLbl.BackgroundTransparency = 1
+    keyInfoLbl.Font = Enum.Font.Code
+    keyInfoLbl.TextSize = 11
+    keyInfoLbl.TextColor3 = Color3.fromRGB(175, 175, 180)
+    keyInfoLbl.TextXAlignment = Enum.TextXAlignment.Left
+    keyInfoLbl.Text = "Key: " .. _getLoadedScriptKey()
+    keyInfoLbl.Parent = leftPanel
+    local keyRemainingInfoLbl = Instance.new("TextLabel")
+    keyRemainingInfoLbl.Size = UDim2.new(1, -16, 0, 14)
+    keyRemainingInfoLbl.Position = UDim2.new(0, 8, 0, 256)
+    keyRemainingInfoLbl.BackgroundTransparency = 1
+    keyRemainingInfoLbl.Font = Enum.Font.Code
+    keyRemainingInfoLbl.TextSize = 11
+    keyRemainingInfoLbl.TextColor3 = Color3.fromRGB(175, 175, 180)
+    keyRemainingInfoLbl.TextXAlignment = Enum.TextXAlignment.Left
+    keyRemainingInfoLbl.Text = "Time remaining on key: " .. _getKeyTimeRemainingText()
+    keyRemainingInfoLbl.Parent = leftPanel
 
-    _createLineSectionHeader(leftPanel, 244, "bug report", 58)
+    _createLineSectionHeader(leftPanel, 272, "bug report", 58)
     local openBugReportModalBtn = Instance.new("TextButton")
     openBugReportModalBtn.Size = UDim2.new(1, -16, 0, 26)
-    openBugReportModalBtn.Position = UDim2.new(0, 8, 0, 264)
+    openBugReportModalBtn.Position = UDim2.new(0, 8, 0, 288)
     openBugReportModalBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     openBugReportModalBtn.TextColor3 = Color3.new(0.75, 0.75, 0.75)
     openBugReportModalBtn.Text = "Send Bug Report"
@@ -1909,6 +1962,12 @@ do
         end
         if sessionInfoLbl.Parent then
             sessionInfoLbl.Text = "current session: " .. _formatCompactDuration(t - _SCRIPT_SESSION_START_TICK)
+        end
+        if keyInfoLbl.Parent then
+            keyInfoLbl.Text = "Key: " .. _getLoadedScriptKey()
+        end
+        if keyRemainingInfoLbl.Parent then
+            keyRemainingInfoLbl.Text = "Time remaining on key: " .. _getKeyTimeRemainingText()
         end
     end)
 
