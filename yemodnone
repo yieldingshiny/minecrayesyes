@@ -49,6 +49,13 @@ local _SCRIPT_SESSION_START_TICK = tick()
 -- ======= UTILITIES TABLE ======= --
 local _UTILS = {}
 
+-- ======= NOTIFICATION TYPES (defined outside do block for accessibility) ======= --
+local _NOTIF_TYPES = {
+   info = {color = Color3.fromRGB(50, 170, 255), iconId = "rbxthumb://type=Asset&id=3209694625&w=150&h=150", iconColor = Color3.fromRGB(50, 170, 255), title = "Info"},
+   warning = {color = Color3.fromRGB(255, 190, 50), iconId = "rbxthumb://type=Asset&id=11745872952&w=150&h=150", iconColor = Color3.fromRGB(255, 200, 50), title = "Warning"},
+   error = {color = Color3.fromRGB(255, 50, 50), iconId = "rbxthumb://type=Asset&id=14563958719&w=150&h=150", iconColor = Color3.fromRGB(255, 60, 60), title = "Error"},
+   success = {color = Color3.fromRGB(50, 200, 80), iconId = "rbxthumb://type=Asset&id=9754130800&w=150&h=150", iconColor = Color3.fromRGB(60, 220, 90), title = "Success"},
+}
 -- ======= NOTIFICATION STACKING ======= --
 do
 local _activeNotifications = {}
@@ -59,12 +66,6 @@ local _NOTIF_RIGHT_MARGIN = 24
 local _NOTIF_BOTTOM_MARGIN = 24
 local _NOTIF_DURATION = 5
 local _NOTIF_CIRCLE_BG = "rbxthumb://type=Asset&id=1141086161&w=150&h=150"
-local _NOTIF_TYPES = {
-   info = {color = Color3.fromRGB(50, 170, 255), iconId = "rbxthumb://type=Asset&id=3209694625&w=150&h=150", iconColor = Color3.fromRGB(50, 170, 255), title = "Info"},
-   warning = {color = Color3.fromRGB(255, 190, 50), iconId = "rbxthumb://type=Asset&id=11745872952&w=150&h=150", iconColor = Color3.fromRGB(255, 200, 50), title = "Warning"},
-   error = {color = Color3.fromRGB(255, 50, 50), iconId = "rbxthumb://type=Asset&id=14563958719&w=150&h=150", iconColor = Color3.fromRGB(255, 60, 60), title = "Error"},
-   success = {color = Color3.fromRGB(50, 200, 80), iconId = "rbxthumb://type=Asset&id=9754130800&w=150&h=150", iconColor = Color3.fromRGB(60, 220, 90), title = "Success"},
-}
 local function _repositionNotifications()
    for i, entry in ipairs(_activeNotifications) do
        local idx = #_activeNotifications - i
