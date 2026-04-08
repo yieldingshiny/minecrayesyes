@@ -1,13 +1,18 @@
 -- Get loadingGui from global environment (set by key loader)
+warn("[FOB SCRIPT] Starting...")
 local runtimeEnv = (getgenv and getgenv()) or _G
 local loadingGui = runtimeEnv.loadingGui
+warn("[FOB SCRIPT] loadingGui = " .. tostring(loadingGui))
+warn("[FOB SCRIPT] SCRIPT_KEY = " .. tostring(runtimeEnv.SCRIPT_KEY))
 
 -- PROTECTION: Prevent standalone execution - script must be loaded through the key loader
 if not (loadingGui and loadingGui:FindFirstChild("LoginSuccess")) then
+    warn("[FOB SCRIPT] No loadingGui or LoginSuccess - kicking player")
     local lp = game:GetService("Players").LocalPlayer
     if lp then lp:Kick("Please use a key to use this script.") end
     return
 end
+warn("[FOB SCRIPT] Protection passed - continuing load")
 
 -- PROTECTION: Verify key was validated by the loader
 if not runtimeEnv.SCRIPT_KEY or runtimeEnv.SCRIPT_KEY == "" then
