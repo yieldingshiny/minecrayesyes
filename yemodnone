@@ -1,4 +1,8 @@
 do
+-- Get loadingGui from global environment (set by key loader)
+local runtimeEnv = (getgenv and getgenv()) or _G
+local loadingGui = runtimeEnv.loadingGui
+
 -- PROTECTION: Prevent standalone execution - script must be loaded through the key loader
 if not (loadingGui and loadingGui:FindFirstChild("LoginSuccess")) then
     local lp = game:GetService("Players").LocalPlayer
@@ -7,7 +11,6 @@ if not (loadingGui and loadingGui:FindFirstChild("LoginSuccess")) then
 end
 
 -- PROTECTION: Verify key was validated by the loader
-local runtimeEnv = (getgenv and getgenv()) or _G
 if not runtimeEnv.SCRIPT_KEY or runtimeEnv.SCRIPT_KEY == "" then
     local lp = game:GetService("Players").LocalPlayer
     if lp then lp:Kick("Please use a key to use this script.") end
