@@ -1,5 +1,27 @@
 do
-local isStandalone = not (loadingGui and loadingGui:FindFirstChild("LoginSuccess"))
+-- PROTECTION: Prevent standalone execution - script must be loaded through the key loader
+if not (loadingGui and loadingGui:FindFirstChild("LoginSuccess")) then
+    local lp = game:GetService("Players").LocalPlayer
+    if lp then lp:Kick("Please use a key to use this script.") end
+    return
+end
+
+-- PROTECTION: Verify key was validated by the loader
+local runtimeEnv = (getgenv and getgenv()) or _G
+if not runtimeEnv.SCRIPT_KEY or runtimeEnv.SCRIPT_KEY == "" then
+    local lp = game:GetService("Players").LocalPlayer
+    if lp then lp:Kick("Please use a key to use this script.") end
+    return
+end
+
+-- Optional: Verify the key hasn't been tampered with (check timestamp is recent)
+local keyAge = os.time() - (runtimeEnv.SCRIPT_KEY_VERIFIED_AT or 0)
+if keyAge > 300 then -- Key must have been verified within last 5 minutes
+    local lp = game:GetService("Players").LocalPlayer
+    if lp then lp:Kick("Please use a key to use this script.") end
+    return
+end
+
 local _CoreGui = game:GetService("CoreGui")
 local _TweenService = game:GetService("TweenService")
 local _RunService = game:GetService("RunService")
@@ -15,7 +37,11 @@ local _CLICK_SOUND = "rbxassetid://100906385041190"
 local _HOVER_SOUND = "rbxassetid://92708987611847"
 local _NOTIF_SOUND = "rbxassetid://127119919079045"
 local _SCRIPT_SESSION_START_TICK = tick()
+-- ======= UTILITIES TABLE ======= --
+local _UTILS = {}
+
 -- ======= NOTIFICATION STACKING ======= --
+do
 local _activeNotifications = {}
 local _NOTIF_WIDTH = 420
 local _NOTIF_HEIGHT = 72
@@ -45,7 +71,7 @@ local function _removeNotification(entry)
    end
    _repositionNotifications()
 end
-local function _playSound(soundId, vol)
+function _UTILS._playSound(soundId, vol)
    local s = Instance.new("Sound")
    s.SoundId = soundId
    s.Volume = vol or 0.5
@@ -53,16 +79,16 @@ local function _playSound(soundId, vol)
    s:Play()
    s.Ended:Connect(function() s:Destroy() end)
 end
-local function _applySoundsToButton(btn)
+function _UTILS._applySoundsToButton(btn)
    if btn:IsA("GuiButton") then
-       btn.MouseEnter:Connect(function() _playSound(_HOVER_SOUND) end)
-       btn.MouseButton1Click:Connect(function() _playSound(_CLICK_SOUND) end)
+       btn.MouseEnter:Connect(function() _UTILS._playSound(_HOVER_SOUND) end)
+       btn.MouseButton1Click:Connect(function() _UTILS._playSound(_CLICK_SOUND) end)
    end
 end
--- ======= GLITCH TEXT (notifications + tab titles) ======= --
+--- ======= GLITCH TEXT (notifications + tab titles) ======= --
 local _glitchSymbols = {"@", "!", "9", "6", "=", "<", "?", "$", "&"}
 local _activeDecode = 0
-local function _animateNotifText(label, targetText)
+function _UTILS._animateNotifText(label, targetText)
    local currentStr = ""
    for i = 1, #targetText do
        local char = targetText:sub(i, i)
@@ -77,7 +103,7 @@ local function _animateNotifText(label, targetText)
        end
    end
 end
-local function _animateTabTitle(label, targetText)
+function _UTILS._animateTabTitle(label, targetText)
    if not label then return end
    _activeDecode = _activeDecode + 1
    local currentDecode = _activeDecode
@@ -103,8 +129,8 @@ local function _animateTabTitle(label, targetText)
        end
    end
 end
--- ======= BLUE PARTICLE BURST ======= --
-local function _createParticleBurst(parent)
+--- ======= BLUE PARTICLE BURST ======= --
+function _UTILS._createParticleBurst(parent)
     local mouse = _Players.LocalPlayer:GetMouse()
     local absPos = parent.AbsolutePosition
     local absSize = parent.AbsoluteSize
@@ -132,21 +158,11 @@ local function _createParticleBurst(parent)
         game.Debris:AddItem(square, duration + 0.1)
     end
 end
--- ======= ROOT GUI ======= --
-local hubGui
-if isStandalone then
-   if _CoreGui:FindFirstChild("InfinitesHubMain") then _CoreGui.InfinitesHubMain:Destroy() end
-   hubGui = Instance.new("ScreenGui")
-   hubGui.Name = "InfinitesHubMain"
-   hubGui.ResetOnSpawn = false
-   hubGui.IgnoreGuiInset = true
-   hubGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-   local ok = pcall(function() hubGui.Parent = _CoreGui end)
-   if not ok then hubGui.Parent = _Players.LocalPlayer:WaitForChild("PlayerGui") end
-else
-   hubGui = loadingGui
-   hubGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-end
+end -- End notification/sounds/particle scope block
+--- ======= ROOT GUI ======= --
+-- Uses the loadingGui from the key loader (script now requires loader to run)
+local hubGui = loadingGui
+hubGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 -- ======= MAIN HUB FRAME ======= --
 local hubWrapper = Instance.new("Frame")
 hubWrapper.Name = "HubWrapper"
@@ -283,7 +299,7 @@ local function createTabButton(name, yPos)
    tabBtnFrame.Text = ""
    tabBtnFrame.AutoButtonColor = false
    tabBtnFrame.Parent = sidebarScroll
-   _applySoundsToButton(tabBtnFrame)
+   _UTILS._applySoundsToButton(tabBtnFrame)
    local indicator = Instance.new("Frame")
    indicator.Size = UDim2.new(0, 12, 0, 12)
    indicator.Position = UDim2.new(0, 15, 0.5, -6)
@@ -476,10 +492,10 @@ local function applyHoverState(btn, icon, label, topLine, bottomLine, diamond, i
        _TweenService:Create(bottomLine, tweenInfo, {Size = targetLineSize}):Play()
        diamond.Visible = active
    end
-   btn.MouseEnter:Connect(function() _playSound(_HOVER_SOUND) updateVisuals(true) end)
+   btn.MouseEnter:Connect(function() _UTILS._playSound(_HOVER_SOUND) updateVisuals(true) end)
    btn.MouseLeave:Connect(function() updateVisuals(false) end)
    btn.MouseButton1Click:Connect(function()
-       _playSound(_CLICK_SOUND)
+       _UTILS._playSound(_CLICK_SOUND)
        task.delay(0.05, function() updateVisuals(true) end)
    end)
    return updateVisuals
@@ -553,7 +569,7 @@ local function createToggleRow(name, parentList, getStateFn, onClickFn)
        table.insert(_buttonRegistry, {name = name, tab = _currentRegistryTab, type = "toggle", getStateFn = getStateFn, onClickFn = onClickFn})
    end
    row.MouseButton1Click:Connect(function()
-       _createParticleBurst(row)
+       _UTILS._createParticleBurst(row)
        onClickFn()
        local slideTI = TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
        if getStateFn() then
@@ -613,7 +629,7 @@ local function createSliderRow(name, parentList, defaultVal, onValueChanged, ski
    local function updateVal(val)
        val = math.clamp(math.floor(val), smin, smax)
        if val ~= currentVal then
-           if currentVal ~= -1 then _playSound(_HOVER_SOUND) end
+           if currentVal ~= -1 then _UTILS._playSound(_HOVER_SOUND) end
            currentVal = val
            textBox.Text = tostring(val)
            if onValueChanged then onValueChanged(val) end
@@ -670,7 +686,7 @@ local function createSliderRow(name, parentList, defaultVal, onValueChanged, ski
        end
    end)
    row.MouseEnter:Connect(function()
-       _playSound(_HOVER_SOUND)
+       _UTILS._playSound(_HOVER_SOUND)
        _TweenService:Create(row, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
        _TweenService:Create(sLb, TweenInfo.new(0.2), {TextColor3 = Color3.new(1, 1, 1)}):Play()
        local tI = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
@@ -758,7 +774,7 @@ local function createDraggableDropdown(titleText)
    closeDropBtn.TextSize = 12
    closeDropBtn.ZIndex = 102
    closeDropBtn.Parent = dropHeader
-   _applySoundsToButton(closeDropBtn)
+   _UTILS._applySoundsToButton(closeDropBtn)
    local searchBox = Instance.new("TextBox")
    searchBox.Size = UDim2.new(1, -16, 0, 24)
    searchBox.Position = UDim2.new(0, 8, 0, 30)
@@ -1469,7 +1485,7 @@ do
     fpsPingRow.AutoButtonColor = false
     fpsPingRow.ZIndex = 2
     fpsPingRow.Parent = settingsBox
-    _applySoundsToButton(fpsPingRow)
+    _UTILS._applySoundsToButton(fpsPingRow)
 
     local fpsLbl = Instance.new("TextLabel")
     fpsLbl.Size = UDim2.new(1, -75, 1, 0)
@@ -1582,7 +1598,7 @@ do
     end
 
     fpsPingRow.MouseButton1Click:Connect(function()
-        _createParticleBurst(fpsPingRow)
+        _UTILS._createParticleBurst(fpsPingRow)
         local nowOn = not S.fpsPingStatsEnabled
         setFpsPingOverlay(nowOn)
         local slideTI = TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
@@ -1972,7 +1988,7 @@ do
     end)
 
     resetFeedbackCdBtn.MouseButton1Click:Connect(function()
-        _playSound(_CLICK_SOUND)
+        _UTILS._playSound(_CLICK_SOUND)
         _clearFeedbackCooldownStorage()
         if feedbackCooldownInfoLbl.Parent then
             feedbackCooldownInfoLbl.Text = "feedback cooldown: ready"
@@ -2382,7 +2398,7 @@ do
     end
 
     backBtn.MouseButton1Click:Connect(function()
-        _playSound(_CLICK_SOUND)
+        _UTILS._playSound(_CLICK_SOUND)
         if currentFeedbackPage == 2 then
             showFeedbackPage(1)
         elseif currentFeedbackPage == 3 then
@@ -2391,7 +2407,7 @@ do
     end)
 
     nextBtn.MouseButton1Click:Connect(function()
-        _playSound(_CLICK_SOUND)
+        _UTILS._playSound(_CLICK_SOUND)
         if currentFeedbackPage == 1 then
             showFeedbackPage(2)
         elseif currentFeedbackPage == 2 then
@@ -2410,7 +2426,7 @@ do
     submitBtn.MouseButton1Click:Connect(function()
         if feedbackSubmitBusy or not submitBtn.Active then return end
         if starRating < 1 then
-            _playSound(_CLICK_SOUND)
+            _UTILS._playSound(_CLICK_SOUND)
             if spawnNotification then spawnNotification("Please select a star rating before submitting.", "warning") end
             return
         end
@@ -2418,7 +2434,7 @@ do
         submitBtn.Active = false
         submitBtn.AutoButtonColor = false
         submitBtn.Text = "Sending..."
-        _playSound(_CLICK_SOUND)
+        _UTILS._playSound(_CLICK_SOUND)
         local lp = _Players.LocalPlayer
         local uname = lp and lp.Name or "Unknown"
         local uid = lp and lp.UserId or 0
@@ -2469,24 +2485,24 @@ do
     local function openFeedbackModal()
         local rem = _getFeedbackCooldownRemaining()
         if rem > 0 then
-            _playSound(_CLICK_SOUND)
+            _UTILS._playSound(_CLICK_SOUND)
             if spawnNotification then
                 spawnNotification("You are on cooldown for " .. _formatCooldownDuration(rem) .. ".", "error")
             end
             return
         end
-        _playSound(_CLICK_SOUND)
+        _UTILS._playSound(_CLICK_SOUND)
         showFeedbackPage(1)
         feedbackModalGui.Enabled = true
     end
 
     local function closeFeedbackModal()
-        _playSound(_CLICK_SOUND)
+        _UTILS._playSound(_CLICK_SOUND)
         feedbackModalGui.Enabled = false
     end
 
     openFeedbackModalBtn.MouseButton1Click:Connect(function()
-        _createParticleBurst(openFeedbackModalBtn)
+        _UTILS._createParticleBurst(openFeedbackModalBtn)
         openFeedbackModal()
     end)
     closeModalBtn.MouseButton1Click:Connect(closeFeedbackModal);
@@ -2693,12 +2709,12 @@ do
     end
 
     bugBackBtn.MouseButton1Click:Connect(function()
-        _playSound(_CLICK_SOUND)
+        _UTILS._playSound(_CLICK_SOUND)
         if currentBugPage == 2 then showBugPage(1) end
     end)
 
     bugNextBtn.MouseButton1Click:Connect(function()
-        _playSound(_CLICK_SOUND)
+        _UTILS._playSound(_CLICK_SOUND)
         if currentBugPage == 1 then showBugPage(2) end
     end)
 
@@ -2708,7 +2724,7 @@ do
         bugSubmitBusy = true
         bugSubmitBtn.Active = false
         bugSubmitBtn.Text = "Sending..."
-        _playSound(_CLICK_SOUND)
+        _UTILS._playSound(_CLICK_SOUND)
         local lp = _Players.LocalPlayer
         local uname = lp and lp.Name or "Unknown"
         local uid = lp and lp.UserId or 0
@@ -2756,39 +2772,39 @@ do
     local function openBugReportModal()
         local rem = _getBugCooldownRemaining()
         if rem > 0 then
-            _playSound(_CLICK_SOUND)
+            _UTILS._playSound(_CLICK_SOUND)
             if spawnNotification then
                 spawnNotification("You are on bug report cooldown for " .. _formatCooldownDuration(rem) .. ".", "error")
             end
             return
         end
-        _playSound(_CLICK_SOUND)
+        _UTILS._playSound(_CLICK_SOUND)
         showBugPage(1)
         bugModalGui.Enabled = true
     end
 
     local function closeBugReportModal()
-        _playSound(_CLICK_SOUND)
+        _UTILS._playSound(_CLICK_SOUND)
         bugModalGui.Enabled = false
     end
 
         openBugReportModalBtn.MouseButton1Click:Connect(function()
-            _createParticleBurst(openBugReportModalBtn)
+            _UTILS._createParticleBurst(openBugReportModalBtn)
             openBugReportModal()
         end)
         bugCloseModalBtn.MouseButton1Click:Connect(closeBugReportModal)
     end)()
 
     hubLogo.MouseButton1Click:Connect(function()
-        _playSound(_CLICK_SOUND)
+        _UTILS._playSound(_CLICK_SOUND)
         switchTab("Home")
-        if tabTitleHome then _animateTabTitle(tabTitleHome, "Dashboard") end
+        if tabTitleHome then _UTILS._animateTabTitle(tabTitleHome, "Dashboard") end
     end)
     
     settingsHeaderBtn.MouseButton1Click:Connect(function()
-        _playSound(_CLICK_SOUND)
+        _UTILS._playSound(_CLICK_SOUND)
         switchTab("SETTINGS")
-        if tabTitle7 then task.spawn(function() _animateTabTitle(tabTitle7, "SETTINGS") end) end
+        if tabTitle7 then task.spawn(function() _UTILS._animateTabTitle(tabTitle7, "SETTINGS") end) end
     end)
 end
 
@@ -2885,7 +2901,7 @@ do
                        bRow.LayoutOrder = resultOrder
                        applyHoverState(bRow, bIc, bLb, bTp, bBt, bDi, false)
                        bRow.MouseButton1Click:Connect(function()
-                           _createParticleBurst(bRow)
+                           _UTILS._createParticleBurst(bRow)
                            regEntry.onClickFn()
                        end)
                    end
@@ -2967,12 +2983,12 @@ do
            item.AutoButtonColor = false
            item.ZIndex = 102
            Instance.new("UICorner", item).CornerRadius = UDim.new(0, 2)
-           _applySoundsToButton(item)
+           _UTILS._applySoundsToButton(item)
            local isSelected = table.find(S.selectedWeapons, toolName) ~= nil
            item.BackgroundColor3 = isSelected and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(24, 24, 24)
            item.Text = isSelected and ("  \226\156\147 " .. toolName) or ("  " .. toolName)
            item.MouseButton1Click:Connect(function()
-               _createParticleBurst(item)
+               _UTILS._createParticleBurst(item)
                local idx = table.find(S.selectedWeapons, toolName)
                if idx then
                    table.remove(S.selectedWeapons, idx)
@@ -2997,7 +3013,7 @@ do
    table.insert(_allDropdownSyncs, function() updateWeaponDropdownText() end)
    if _currentRegistryTab then table.insert(_buttonRegistry, {name = "Weapons", tab = _currentRegistryTab, type = "special", onClickFn = function() updateWeaponDropdown(); showWDrop() end}) end
    wRow.MouseButton1Click:Connect(function()
-       _createParticleBurst(wRow)
+       _UTILS._createParticleBurst(wRow)
        updateWeaponDropdown()
        showWDrop()
    end)
@@ -3094,7 +3110,7 @@ do
    end
    if _currentRegistryTab then table.insert(_buttonRegistry, {name = "Start AutoDuping", tab = _currentRegistryTab, type = "button", onClickFn = handleWeaponReorderClick}) end
    rRow.MouseButton1Click:Connect(function()
-       _createParticleBurst(rRow)
+       _UTILS._createParticleBurst(rRow)
        handleWeaponReorderClick()
    end)
    linkRows(dupeSliderRow, rRow)
@@ -3555,7 +3571,7 @@ do
        tpToolRow.Parent = elementsList
        applyHoverState(tpToolRow, tpToolIcon, tpToolLabel, tpToolTop, tpToolBot, tpToolDia, false)
        tpToolRow.MouseButton1Click:Connect(function()
-           _createParticleBurst(tpToolRow)
+           _UTILS._createParticleBurst(tpToolRow)
            local player = _Players.LocalPlayer
            local backpack = player:FindFirstChildOfClass("Backpack")
            if not backpack then
@@ -4691,7 +4707,7 @@ do
        optRow.AutoButtonColor = false
        optRow.ZIndex = 102
        optRow.Parent = mapDropList
-       _applySoundsToButton(optRow)
+       _UTILS._applySoundsToButton(optRow)
        local optIcon = Instance.new("Frame")
        optIcon.Size = UDim2.new(0, 10, 0, 10)
        optIcon.Position = UDim2.new(0, 10, 0.5, -5)
@@ -4719,7 +4735,7 @@ do
            if mapCmd ~= S.selectedMap then optRow.BackgroundColor3 = Color3.fromRGB(24, 24, 24) end
        end)
        optRow.MouseButton1Click:Connect(function()
-           _createParticleBurst(optRow)
+           _UTILS._createParticleBurst(optRow)
            S.selectedMap = mapCmd
            if mapCmd == "None" then
                mOpenLbl.Text = "\226\137\161 None"
@@ -4749,7 +4765,7 @@ do
    end)
    if _currentRegistryTab then table.insert(_buttonRegistry, {name = "Map Vote", tab = _currentRegistryTab, type = "special", onClickFn = function() showMapDrop() end}) end
    mRow.MouseButton1Click:Connect(function()
-       _createParticleBurst(mRow)
+       _UTILS._createParticleBurst(mRow)
        showMapDrop()
    end)
    -- TP to Human General button
@@ -4766,7 +4782,7 @@ do
    end
    if _currentRegistryTab then table.insert(_buttonRegistry, {name = "TP Human General", tab = _currentRegistryTab, type = "button", onClickFn = tpHumanGeneralFn}) end
    hRow.MouseButton1Click:Connect(function()
-       _createParticleBurst(hRow)
+       _UTILS._createParticleBurst(hRow)
        tpHumanGeneralFn()
    end)
    -- TP to Orc General button
@@ -4783,7 +4799,7 @@ do
    end
    if _currentRegistryTab then table.insert(_buttonRegistry, {name = "TP Orc General", tab = _currentRegistryTab, type = "button", onClickFn = tpOrcGeneralFn}) end
    oRow.MouseButton1Click:Connect(function()
-       _createParticleBurst(oRow)
+       _UTILS._createParticleBurst(oRow)
        tpOrcGeneralFn()
    end)
    -- Notify if Staff Joins toggle
@@ -5215,7 +5231,7 @@ do
        headerBtn.AutoButtonColor = false
        headerBtn.LayoutOrder = nextOrder()
        headerBtn.Parent = parentList
-       _applySoundsToButton(headerBtn)
+       _UTILS._applySoundsToButton(headerBtn)
        Instance.new("UICorner", headerBtn).CornerRadius = UDim.new(0, 4)
        local headerIcon = Instance.new("Frame")
        headerIcon.Size = UDim2.new(0, 14, 0, 14)
@@ -5279,7 +5295,7 @@ do
            end
        end)
        headerBtn.MouseButton1Click:Connect(function()
-           _createParticleBurst(headerBtn)
+           _UTILS._createParticleBurst(headerBtn)
            sectionIsExpanded = not sectionIsExpanded
            if sectionIsExpanded then
                local targetH = sectionLayout.AbsoluteContentSize.Y
@@ -5299,7 +5315,7 @@ do
            end
        end)
        headerBtn.MouseEnter:Connect(function()
-           _playSound(_HOVER_SOUND)
+           _UTILS._playSound(_HOVER_SOUND)
            _TweenService:Create(headerBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(28, 28, 28)}):Play()
            _TweenService:Create(headerLabel, TweenInfo.new(0.2), {TextColor3 = Color3.new(1, 1, 1)}):Play()
            local tI = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
@@ -5665,7 +5681,7 @@ do
            item.ZIndex = 102
            item.Parent = psFmDropList
            Instance.new("UICorner", item).CornerRadius = UDim.new(0, 2)
-           _applySoundsToButton(item)
+           _UTILS._applySoundsToButton(item)
            local function refreshPsFmItem()
                if S.psFarmMethod == methodName then
                    item.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
@@ -5677,7 +5693,7 @@ do
            end
            refreshPsFmItem()
            item.MouseButton1Click:Connect(function()
-               _createParticleBurst(item)
+               _UTILS._createParticleBurst(item)
                S.psFarmMethod = methodName
                psFmOpenLbl.Text = "\226\137\161 " .. methodName
                -- Sync to general and demon
@@ -5712,7 +5728,7 @@ do
        end
        if _currentRegistryTab then table.insert(_buttonRegistry, {name = "PS Farm Method", tab = _currentRegistryTab, type = "special", onClickFn = function() showPsFmDrop() end}) end
        psFmRow.MouseButton1Click:Connect(function()
-           _createParticleBurst(psFmRow)
+           _UTILS._createParticleBurst(psFmRow)
            showPsFmDrop()
        end)
        -- Initialize tween slider visibility
@@ -5830,12 +5846,12 @@ do
                item.AutoButtonColor = false
                item.ZIndex = 102
                Instance.new("UICorner", item).CornerRadius = UDim.new(0, 2)
-               _applySoundsToButton(item)
+               _UTILS._applySoundsToButton(item)
                local isSelected = table.find(S.psAutoFarmWeapons, toolName) ~= nil
                item.BackgroundColor3 = isSelected and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(24, 24, 24)
                item.Text = isSelected and ("  \226\156\147 " .. toolName) or ("  " .. toolName)
                item.MouseButton1Click:Connect(function()
-                   _createParticleBurst(item)
+                   _UTILS._createParticleBurst(item)
                    local idx = table.find(S.psAutoFarmWeapons, toolName)
                    if idx then
                        table.remove(S.psAutoFarmWeapons, idx)
@@ -5869,7 +5885,7 @@ do
        table.insert(_allDropdownSyncs, function() updatePsWeaponText() end)
        if _currentRegistryTab then table.insert(_buttonRegistry, {name = "PS Weapons for AutoFarming", tab = _currentRegistryTab, type = "special", onClickFn = function() updatePsWeaponDropdown(); showPsWafDrop() end}) end
        psWafRow.MouseButton1Click:Connect(function()
-           _createParticleBurst(psWafRow)
+           _UTILS._createParticleBurst(psWafRow)
            updatePsWeaponDropdown()
            showPsWafDrop()
        end)
@@ -5942,7 +5958,7 @@ do
            item.ZIndex = 102
            item.Parent = psGmDropList
            Instance.new("UICorner", item).CornerRadius = UDim.new(0, 2)
-           _applySoundsToButton(item)
+           _UTILS._applySoundsToButton(item)
            local function refreshPsMethodItem()
                if S.gemFarmMethod == methodName then
                    item.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
@@ -5954,7 +5970,7 @@ do
            end
            refreshPsMethodItem()
            item.MouseButton1Click:Connect(function()
-               _createParticleBurst(item)
+               _UTILS._createParticleBurst(item)
                S.gemFarmMethod = methodName
                psGmOpenLbl.Text = "\226\137\161 " .. methodName
                if S.privateServerAutofarmEnabled then
@@ -5992,7 +6008,7 @@ do
        end
        if _currentRegistryTab then table.insert(_buttonRegistry, {name = "PS Gem Farm Method", tab = _currentRegistryTab, type = "special", onClickFn = function() showPsGmDrop() end}) end
        psGmRow.MouseButton1Click:Connect(function()
-           _createParticleBurst(psGmRow)
+           _UTILS._createParticleBurst(psGmRow)
            showPsGmDrop()
        end)
        -- Initialize gem tween slider visibility
@@ -6070,7 +6086,7 @@ do
            item.ZIndex = 102
            item.Parent = psGemDropList
            Instance.new("UICorner", item).CornerRadius = UDim.new(0, 2)
-           _applySoundsToButton(item)
+           _UTILS._applySoundsToButton(item)
            local function refreshPsGemItem()
                if selectedGems[gemId] then
                    item.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
@@ -6082,7 +6098,7 @@ do
            end
            refreshPsGemItem()
            item.MouseButton1Click:Connect(function()
-               _createParticleBurst(item)
+               _UTILS._createParticleBurst(item)
                selectedGems[gemId] = not selectedGems[gemId]
                refreshPsGemItem()
                updatePsGemText()
@@ -6096,7 +6112,7 @@ do
        end
        if _currentRegistryTab then table.insert(_buttonRegistry, {name = "PS Select Gems", tab = _currentRegistryTab, type = "special", onClickFn = function() showPsGemDrop() end}) end
        psGRow.MouseButton1Click:Connect(function()
-           _createParticleBurst(psGRow)
+           _UTILS._createParticleBurst(psGRow)
            showPsGemDrop()
        end)
    end
@@ -6402,7 +6418,7 @@ do
            item.ZIndex = 102
            item.Parent = gmDropList
            Instance.new("UICorner", item).CornerRadius = UDim.new(0, 2)
-           _applySoundsToButton(item)
+           _UTILS._applySoundsToButton(item)
            local function refreshMethodItem()
                if S.gemFarmMethod == methodName then
                    item.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
@@ -6414,7 +6430,7 @@ do
            end
            refreshMethodItem()
            item.MouseButton1Click:Connect(function()
-               _createParticleBurst(item)
+               _UTILS._createParticleBurst(item)
                applyGemFarmMethod(methodName)
                gmOpenLbl.Text = "\226\137\161 " .. methodName
                -- Refresh all items in the dropdown
@@ -6447,7 +6463,7 @@ do
        end
        if _currentRegistryTab then table.insert(_buttonRegistry, {name = "Gem Farm Method", tab = _currentRegistryTab, type = "special", onClickFn = function() showGmDrop() end}) end
        gmRow.MouseButton1Click:Connect(function()
-           _createParticleBurst(gmRow)
+           _UTILS._createParticleBurst(gmRow)
            showGmDrop()
        end)
        -- Initialize tween slider visibility
@@ -6525,7 +6541,7 @@ do
        item.ZIndex = 102
        item.Parent = gemDropList
        Instance.new("UICorner", item).CornerRadius = UDim.new(0, 2)
-       _applySoundsToButton(item)
+       _UTILS._applySoundsToButton(item)
        local function refreshItem()
            if selectedGems[gemId] then
                item.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
@@ -6537,7 +6553,7 @@ do
        end
        refreshItem()
        item.MouseButton1Click:Connect(function()
-           _createParticleBurst(item)
+           _UTILS._createParticleBurst(item)
            selectedGems[gemId] = not selectedGems[gemId]
            refreshItem()
            updateGemDropdownText()
@@ -6551,7 +6567,7 @@ do
    end
    if _currentRegistryTab then table.insert(_buttonRegistry, {name = "Select Gems", tab = _currentRegistryTab, type = "special", onClickFn = function() showGemDrop() end}) end
    gRow.MouseButton1Click:Connect(function()
-       _createParticleBurst(gRow)
+       _UTILS._createParticleBurst(gRow)
        showGemDrop()
    end)
    end
@@ -6692,7 +6708,7 @@ do
            item.ZIndex = 102
            item.Parent = gmGenDropList
            Instance.new("UICorner", item).CornerRadius = UDim.new(0, 2)
-           _applySoundsToButton(item)
+           _UTILS._applySoundsToButton(item)
            if S.generalFarmMethod == methodName then
                item.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
                item.Text = "  \226\156\147 " .. methodName
@@ -6701,7 +6717,7 @@ do
                item.Text = "  " .. methodName
            end
            item.MouseButton1Click:Connect(function()
-               _createParticleBurst(item)
+               _UTILS._createParticleBurst(item)
                S.generalFarmMethod = methodName
                syncGeneralAutofarmNoclip()
                gmGenOpenLbl.Text = "\226\137\161 " .. methodName
@@ -6739,7 +6755,7 @@ do
        end
        if _currentRegistryTab then table.insert(_buttonRegistry, {name = "General Farm Method", tab = _currentRegistryTab, type = "special", onClickFn = function() showGmGenDrop() end}) end
        gmGenRow.MouseButton1Click:Connect(function()
-           _createParticleBurst(gmGenRow)
+           _UTILS._createParticleBurst(gmGenRow)
            showGmGenDrop()
        end)
        -- Initialize tween slider visibility
@@ -6852,12 +6868,12 @@ do
                item.AutoButtonColor = false
                item.ZIndex = 102
                Instance.new("UICorner", item).CornerRadius = UDim.new(0, 2)
-               _applySoundsToButton(item)
+               _UTILS._applySoundsToButton(item)
                local isSelected = table.find(S.generalAutoFarmWeapons, toolName) ~= nil
                item.BackgroundColor3 = isSelected and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(24, 24, 24)
                item.Text = isSelected and ("  \226\156\147 " .. toolName) or ("  " .. toolName)
                item.MouseButton1Click:Connect(function()
-                   _createParticleBurst(item)
+                   _UTILS._createParticleBurst(item)
                    local idx = table.find(S.generalAutoFarmWeapons, toolName)
                    if idx then
                        table.remove(S.generalAutoFarmWeapons, idx)
@@ -6882,7 +6898,7 @@ do
        table.insert(_allDropdownSyncs, function() updateGenWeaponText() end)
        if _currentRegistryTab then table.insert(_buttonRegistry, {name = "Weapons for AutoFarming (General)", tab = _currentRegistryTab, type = "special", onClickFn = function() updateGenWeaponDropdown(); showWafDrop() end}) end
        wafRow.MouseButton1Click:Connect(function()
-           _createParticleBurst(wafRow)
+           _UTILS._createParticleBurst(wafRow)
            updateGenWeaponDropdown()
            showWafDrop()
        end)
@@ -7019,7 +7035,7 @@ do
            item.ZIndex = 102
            item.Parent = gmDemonDropList
            Instance.new("UICorner", item).CornerRadius = UDim.new(0, 2)
-           _applySoundsToButton(item)
+           _UTILS._applySoundsToButton(item)
            local function refreshDemonMethodItem()
                if S.demonFarmMethod == methodName then
                    item.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
@@ -7031,7 +7047,7 @@ do
            end
            refreshDemonMethodItem()
            item.MouseButton1Click:Connect(function()
-               _createParticleBurst(item)
+               _UTILS._createParticleBurst(item)
                S.demonFarmMethod = methodName
                gmDemonOpenLbl.Text = "\226\137\161 " .. methodName
                for _, child in pairs(gmDemonDropList:GetChildren()) do
@@ -7062,7 +7078,7 @@ do
        end
        if _currentRegistryTab then table.insert(_buttonRegistry, {name = "Demon Farm Method", tab = _currentRegistryTab, type = "special", onClickFn = function() showGmDemonDrop() end}) end
        gmDemonRow.MouseButton1Click:Connect(function()
-           _createParticleBurst(gmDemonRow)
+           _UTILS._createParticleBurst(gmDemonRow)
            showGmDemonDrop()
        end)
        -- Initialize tween slider visibility
@@ -7163,12 +7179,12 @@ do
                item.AutoButtonColor = false
                item.ZIndex = 102
                Instance.new("UICorner", item).CornerRadius = UDim.new(0, 2)
-               _applySoundsToButton(item)
+               _UTILS._applySoundsToButton(item)
                local isSelected = table.find(S.demonAutoFarmWeapons, toolName) ~= nil
                item.BackgroundColor3 = isSelected and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(24, 24, 24)
                item.Text = isSelected and ("  \226\156\147 " .. toolName) or ("  " .. toolName)
                item.MouseButton1Click:Connect(function()
-                   _createParticleBurst(item)
+                   _UTILS._createParticleBurst(item)
                    local idx = table.find(S.demonAutoFarmWeapons, toolName)
                    if idx then
                        table.remove(S.demonAutoFarmWeapons, idx)
@@ -7193,7 +7209,7 @@ do
        table.insert(_allDropdownSyncs, function() updateDemonWeaponText() end)
        if _currentRegistryTab then table.insert(_buttonRegistry, {name = "Weapons for AutoFarming (Demon)", tab = _currentRegistryTab, type = "special", onClickFn = function() updateDemonWeaponDropdown(); showWafDDrop() end}) end
        wafDRow.MouseButton1Click:Connect(function()
-           _createParticleBurst(wafDRow)
+           _UTILS._createParticleBurst(wafDRow)
            updateDemonWeaponDropdown()
            showWafDDrop()
        end)
@@ -7336,7 +7352,7 @@ do
            item.ZIndex = 102
            item.Parent = gmNpcDropList
            Instance.new("UICorner", item).CornerRadius = UDim.new(0, 2)
-           _applySoundsToButton(item)
+           _UTILS._applySoundsToButton(item)
            local function refreshNpcMethodItem()
                if S.npcFarmMethod == methodName then
                    item.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
@@ -7348,7 +7364,7 @@ do
            end
            refreshNpcMethodItem()
            item.MouseButton1Click:Connect(function()
-               _createParticleBurst(item)
+               _UTILS._createParticleBurst(item)
                S.npcFarmMethod = methodName
                gmNpcOpenLbl.Text = "\226\137\161 " .. methodName
                for _, child in pairs(gmNpcDropList:GetChildren()) do
@@ -7379,7 +7395,7 @@ do
        end
        if _currentRegistryTab then table.insert(_buttonRegistry, {name = "NPC Farm Method", tab = _currentRegistryTab, type = "special", onClickFn = function() showGmNpcDrop() end}) end
        gmNpcRow.MouseButton1Click:Connect(function()
-           _createParticleBurst(gmNpcRow)
+           _UTILS._createParticleBurst(gmNpcRow)
            showGmNpcDrop()
        end)
        -- Initialize tween slider visibility (NPC defaults to Tween)
@@ -7480,12 +7496,12 @@ do
                item.AutoButtonColor = false
                item.ZIndex = 102
                Instance.new("UICorner", item).CornerRadius = UDim.new(0, 2)
-               _applySoundsToButton(item)
+               _UTILS._applySoundsToButton(item)
                local isSelected = table.find(S.npcAutoFarmWeapons, toolName) ~= nil
                item.BackgroundColor3 = isSelected and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(24, 24, 24)
                item.Text = isSelected and ("  \226\156\147 " .. toolName) or ("  " .. toolName)
                item.MouseButton1Click:Connect(function()
-                   _createParticleBurst(item)
+                   _UTILS._createParticleBurst(item)
                    local idx = table.find(S.npcAutoFarmWeapons, toolName)
                    if idx then
                        table.remove(S.npcAutoFarmWeapons, idx)
@@ -7510,7 +7526,7 @@ do
        table.insert(_allDropdownSyncs, function() updateNpcWeaponText() end)
        if _currentRegistryTab then table.insert(_buttonRegistry, {name = "Weapons for AutoFarming (NPC)", tab = _currentRegistryTab, type = "special", onClickFn = function() updateNpcWeaponDropdown(); showWafNDrop() end}) end
        wafNRow.MouseButton1Click:Connect(function()
-           _createParticleBurst(wafNRow)
+           _UTILS._createParticleBurst(wafNRow)
            updateNpcWeaponDropdown()
            showWafNDrop()
        end)
@@ -7678,7 +7694,7 @@ do
            item.ZIndex = 102
            item.Parent = gmEggDropList
            Instance.new("UICorner", item).CornerRadius = UDim.new(0, 2)
-           _applySoundsToButton(item)
+           _UTILS._applySoundsToButton(item)
            local function refreshEggMethodItem()
                if S.eggFarmMethod == methodName then
                    item.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
@@ -7690,7 +7706,7 @@ do
            end
            refreshEggMethodItem()
            item.MouseButton1Click:Connect(function()
-               _createParticleBurst(item)
+               _UTILS._createParticleBurst(item)
                S.eggFarmMethod = methodName
                gmEggOpenLbl.Text = "\226\137\161 " .. methodName
                for _, child in pairs(gmEggDropList:GetChildren()) do
@@ -7721,7 +7737,7 @@ do
        end
        if _currentRegistryTab then table.insert(_buttonRegistry, {name = "Egg Farm Method", tab = _currentRegistryTab, type = "special", onClickFn = function() showGmEggDrop() end}) end
        gmEggRow.MouseButton1Click:Connect(function()
-           _createParticleBurst(gmEggRow)
+           _UTILS._createParticleBurst(gmEggRow)
            showGmEggDrop()
        end)
        -- Initialize tween slider visibility
@@ -7822,12 +7838,12 @@ do
                item.AutoButtonColor = false
                item.ZIndex = 102
                Instance.new("UICorner", item).CornerRadius = UDim.new(0, 2)
-               _applySoundsToButton(item)
+               _UTILS._applySoundsToButton(item)
                local isSelected = table.find(S.eggAutoFarmWeapons, toolName) ~= nil
                item.BackgroundColor3 = isSelected and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(24, 24, 24)
                item.Text = isSelected and ("  \226\156\147 " .. toolName) or ("  " .. toolName)
                item.MouseButton1Click:Connect(function()
-                   _createParticleBurst(item)
+                   _UTILS._createParticleBurst(item)
                    local idx = table.find(S.eggAutoFarmWeapons, toolName)
                    if idx then
                        table.remove(S.eggAutoFarmWeapons, idx)
@@ -7852,7 +7868,7 @@ do
        table.insert(_allDropdownSyncs, function() updateEggWeaponText() end)
        if _currentRegistryTab then table.insert(_buttonRegistry, {name = "Weapons for AutoFarming (Egg)", tab = _currentRegistryTab, type = "special", onClickFn = function() updateEggWeaponDropdown(); showWafEggDrop() end}) end
        wafEggRow.MouseButton1Click:Connect(function()
-           _createParticleBurst(wafEggRow)
+           _UTILS._createParticleBurst(wafEggRow)
            updateEggWeaponDropdown()
            showWafEggDrop()
        end)
@@ -10393,10 +10409,10 @@ do
    kbBoxBtn.Text = ""
    kbBoxBtn.ZIndex = 3
    kbBoxBtn.Parent = kbBoxBg
-   _applySoundsToButton(kbBoxBtn)
+   _UTILS._applySoundsToButton(kbBoxBtn)
    -- Hover effects for the row
    kbRow.MouseEnter:Connect(function()
-       _playSound(_HOVER_SOUND)
+       _UTILS._playSound(_HOVER_SOUND)
        _TweenService:Create(kbRow, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
        _TweenService:Create(kbIcon, TweenInfo.new(0.2), {BackgroundColor3 = Color3.new(1, 1, 1)}):Play()
        _TweenService:Create(kbLabel, TweenInfo.new(0.2), {TextColor3 = Color3.new(1, 1, 1)}):Play()
@@ -10427,7 +10443,7 @@ do
        kbBoxLabel.TextColor3 = Color3.new(1, 1, 1)
    end
    kbBoxBtn.MouseButton1Click:Connect(function()
-       _createParticleBurst(kbBoxBg)
+       _UTILS._createParticleBurst(kbBoxBg)
        if isListening then
            stopListening()
            kbBoxLabel.Text = guiToggleKeyName
@@ -10531,10 +10547,10 @@ do
    pkbBoxBtn.Text = ""
    pkbBoxBtn.ZIndex = 3
    pkbBoxBtn.Parent = pkbBoxBg
-   _applySoundsToButton(pkbBoxBtn)
+   _UTILS._applySoundsToButton(pkbBoxBtn)
    -- Hover effects for panic row
    pkbRow.MouseEnter:Connect(function()
-       _playSound(_HOVER_SOUND)
+       _UTILS._playSound(_HOVER_SOUND)
        _TweenService:Create(pkbRow, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
        _TweenService:Create(pkbIcon, TweenInfo.new(0.2), {BackgroundColor3 = Color3.new(1, 0.3, 0.3)}):Play()
        _TweenService:Create(pkbLabel, TweenInfo.new(0.2), {TextColor3 = Color3.new(1, 1, 1)}):Play()
@@ -10557,7 +10573,7 @@ do
    local pkbPendingKey = nil
    local pkbListenConn = nil
    pkbBoxBtn.MouseButton1Click:Connect(function()
-       _createParticleBurst(pkbBoxBg)
+       _UTILS._createParticleBurst(pkbBoxBg)
        if pkbListening then
            pkbListening = false
            if pkbListenConn then pkbListenConn:Disconnect() pkbListenConn = nil end
@@ -10648,7 +10664,7 @@ do
        local function cdUpdateVal(val)
            val = math.clamp(math.floor(val * 100 + 0.5) / 100, 1, 100)
            if val ~= cdCurrentVal then
-               if cdCurrentVal ~= -1 then _playSound(_HOVER_SOUND) end
+               if cdCurrentVal ~= -1 then _UTILS._playSound(_HOVER_SOUND) end
                cdCurrentVal = val
                S.dupeCooldown = val
                cdTextBox.Text = string.format("%.2f", val)
@@ -10705,7 +10721,7 @@ do
            end
        end)
        cdRow.MouseEnter:Connect(function()
-           _playSound(_HOVER_SOUND)
+           _UTILS._playSound(_HOVER_SOUND)
            _TweenService:Create(cdRow, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
            _TweenService:Create(cdLb, TweenInfo.new(0.2), {TextColor3 = Color3.new(1, 1, 1)}):Play()
            local tI = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
@@ -11293,7 +11309,7 @@ do
    end
    if _currentRegistryTab then table.insert(_buttonRegistry, {name = "Create Config", tab = _currentRegistryTab, type = "button", onClickFn = showCreateConfigOverlay}) end
    cfgCreateRow.MouseButton1Click:Connect(function()
-       _createParticleBurst(cfgCreateRow)
+       _UTILS._createParticleBurst(cfgCreateRow)
        showCreateConfigOverlay()
        if cfgOverlayConn then cfgOverlayConn:Disconnect() end
        cfgOverlayConn = _UserInputService.InputBegan:Connect(function(input, gp)
@@ -11353,12 +11369,12 @@ do
        noneItem.AutoButtonColor = false
        noneItem.ZIndex = 102
        Instance.new("UICorner", noneItem).CornerRadius = UDim.new(0, 2)
-       _applySoundsToButton(noneItem)
+       _UTILS._applySoundsToButton(noneItem)
        local noneSelected = S.selectedConfigName == nil
        noneItem.BackgroundColor3 = noneSelected and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(24, 24, 24)
        noneItem.Text = noneSelected and "  \226\156\147 None" or "  None"
        noneItem.MouseButton1Click:Connect(function()
-           _createParticleBurst(noneItem)
+           _UTILS._createParticleBurst(noneItem)
            S.selectedConfigName = nil
            cfgOpenLbl.Text = "\226\137\161 None"
            hideCfgDrop()
@@ -11387,12 +11403,12 @@ do
            item.AutoButtonColor = false
            item.ZIndex = 102
            Instance.new("UICorner", item).CornerRadius = UDim.new(0, 2)
-           _applySoundsToButton(item)
+           _UTILS._applySoundsToButton(item)
            local isSelected = S.selectedConfigName == cfgName
            item.BackgroundColor3 = isSelected and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(24, 24, 24)
            item.Text = isSelected and ("  \226\156\147 " .. cfgName) or ("  " .. cfgName)
            item.MouseButton1Click:Connect(function()
-               _createParticleBurst(item)
+               _UTILS._createParticleBurst(item)
                S.selectedConfigName = cfgName
                cfgOpenLbl.Text = "\226\137\161 " .. cfgName
                hideCfgDrop()
@@ -11407,7 +11423,7 @@ do
    end
    if _currentRegistryTab then table.insert(_buttonRegistry, {name = "Select Config", tab = _currentRegistryTab, type = "special", onClickFn = function() updateConfigDropdown(); showCfgDrop() end}) end
    cfgSelRow.MouseButton1Click:Connect(function()
-       _createParticleBurst(cfgSelRow)
+       _UTILS._createParticleBurst(cfgSelRow)
        updateConfigDropdown()
        showCfgDrop()
    end)
@@ -11520,7 +11536,7 @@ do
        applyHoverState(r, i, l, t, b, d, false)
        if _currentRegistryTab then table.insert(_buttonRegistry, {name = "Load Config", tab = _currentRegistryTab, type = "button", onClickFn = doLoad}) end
        r.MouseButton1Click:Connect(function()
-           _createParticleBurst(r)
+           _UTILS._createParticleBurst(r)
            doLoad()
        end)
    end)()
@@ -11575,7 +11591,7 @@ do
        yesBtn.ZIndex = 52
        yesBtn.Parent = delBox
        Instance.new("UICorner", yesBtn).CornerRadius = UDim.new(0, 4)
-       _applySoundsToButton(yesBtn)
+       _UTILS._applySoundsToButton(yesBtn)
        local cancelBtn = Instance.new("TextButton")
        cancelBtn.Size = UDim2.new(0, 110, 0, 32)
        cancelBtn.Position = UDim2.new(1, -135, 1, -45)
@@ -11589,7 +11605,7 @@ do
        cancelBtn.ZIndex = 52
        cancelBtn.Parent = delBox
        Instance.new("UICorner", cancelBtn).CornerRadius = UDim.new(0, 4)
-       _applySoundsToButton(cancelBtn)
+       _UTILS._applySoundsToButton(cancelBtn)
        local function hideDelOverlay()
            delOverlay.Visible = false
        end
@@ -11602,11 +11618,11 @@ do
            delOverlay.Visible = true
        end
        cancelBtn.MouseButton1Click:Connect(function()
-           _createParticleBurst(cancelBtn)
+           _UTILS._createParticleBurst(cancelBtn)
            hideDelOverlay()
        end)
        yesBtn.MouseButton1Click:Connect(function()
-           _createParticleBurst(yesBtn)
+           _UTILS._createParticleBurst(yesBtn)
            if S.selectedConfigName then
                pcall(function()
                    if delfile then
@@ -11623,7 +11639,7 @@ do
        end)
        if _currentRegistryTab then table.insert(_buttonRegistry, {name = "Delete Config", tab = _currentRegistryTab, type = "button", onClickFn = showDelOverlay}) end
        r.MouseButton1Click:Connect(function()
-           _createParticleBurst(r)
+           _UTILS._createParticleBurst(r)
            showDelOverlay()
        end)
    end)()
@@ -11817,7 +11833,7 @@ do
        resetBg.ZIndex = 3
        resetBg.Parent = row
        Instance.new("UICorner", resetBg).CornerRadius = UDim.new(0, 4)
-       _applySoundsToButton(resetBg)
+       _UTILS._applySoundsToButton(resetBg)
 
        -- Keybind display button
        local keybindBg = Instance.new("Frame")
@@ -11844,11 +11860,11 @@ do
        keybindBtn.Text = ""
        keybindBtn.ZIndex = 3
        keybindBtn.Parent = keybindBg
-       _applySoundsToButton(keybindBtn)
+       _UTILS._applySoundsToButton(keybindBtn)
 
        -- Hover effects
        row.MouseEnter:Connect(function()
-           _playSound(_HOVER_SOUND)
+           _UTILS._playSound(_HOVER_SOUND)
            _TweenService:Create(row, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
            _TweenService:Create(icon, TweenInfo.new(0.2), {BackgroundColor3 = Color3.new(1, 1, 1)}):Play()
            _TweenService:Create(lbl, TweenInfo.new(0.2), {TextColor3 = Color3.new(1, 1, 1)}):Play()
@@ -11890,7 +11906,7 @@ do
 
        -- Keybind button click: start listening
        keybindBtn.MouseButton1Click:Connect(function()
-           _createParticleBurst(keybindBg)
+           _UTILS._createParticleBurst(keybindBg)
            -- If already listening on this button, cancel
            if _keybindListening and _keybindListeningBtn == keybindBtn then
                stopKeybindListening()
@@ -11932,7 +11948,7 @@ do
 
        -- Reset button click: clear keybind
        resetBg.MouseButton1Click:Connect(function()
-           _createParticleBurst(resetBg)
+           _UTILS._createParticleBurst(resetBg)
            if _keybindListening and _keybindListeningBtn == keybindBtn then
                stopKeybindListening()
            end
@@ -12189,7 +12205,7 @@ do
    _addTabBtn.AutoButtonColor = false
    _addTabBtn.Visible = false
    _addTabBtn.Parent = sidebarScroll
-   _applySoundsToButton(_addTabBtn)
+   _UTILS._applySoundsToButton(_addTabBtn)
    local addIcon = Instance.new("TextLabel")
    addIcon.Size = UDim2.new(1, 0, 1, 0)
    addIcon.BackgroundTransparency = 1
@@ -12247,7 +12263,7 @@ do
        b.TextColor3 = Color3.fromRGB(220, 220, 220)
        b.AutoButtonColor = false
        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 4)
-       _applySoundsToButton(b)
+       _UTILS._applySoundsToButton(b)
    end
    local sidebarMinusBtn = Instance.new("TextButton")
    styleNavBtn(sidebarMinusBtn, "-")
@@ -12320,7 +12336,7 @@ do
        closeBtn.TextSize = 16
        closeBtn.ZIndex = 51
        closeBtn.Parent = pickerOverlay
-       _applySoundsToButton(closeBtn)
+       _UTILS._applySoundsToButton(closeBtn)
        closeBtn.MouseButton1Click:Connect(function()
            pickerOverlay:Destroy()
            pickerOverlay = nil
@@ -12436,7 +12452,7 @@ do
            fb.LayoutOrder = i
            fb.Parent = filterBar
            Instance.new("UICorner", fb).CornerRadius = UDim.new(0, 4)
-           _applySoundsToButton(fb)
+           _UTILS._applySoundsToButton(fb)
            local fbLbl = Instance.new("TextLabel")
            fbLbl.Size = UDim2.new(1, 0, 1, 0)
            fbLbl.BackgroundTransparency = 1
@@ -12498,7 +12514,7 @@ do
                item.LayoutOrder = layoutOrder
                item.Parent = pickerScroll
                Instance.new("UICorner", item).CornerRadius = UDim.new(0, 4)
-               _applySoundsToButton(item)
+               _UTILS._applySoundsToButton(item)
                -- Type indicator dot
                local itemIcon = Instance.new("Frame")
                itemIcon.Size = UDim2.new(0, 10, 0, 10)
@@ -12543,7 +12559,7 @@ do
                end)
                local capturedEntry = regEntry
                item.MouseButton1Click:Connect(function()
-                   _createParticleBurst(item)
+                   _UTILS._createParticleBurst(item)
                    local newRow
                    if capturedEntry.type == "slider" then
                        newRow = createSliderRow(capturedEntry.name, targetList, capturedEntry.defaultVal or 1, capturedEntry.onValueChanged, true)
@@ -12555,7 +12571,7 @@ do
                        applyHoverState(bRow, bIc, bLb, bTp, bBt, bDia, false)
                        if capturedEntry.onClickFn then
                            bRow.MouseButton1Click:Connect(function()
-                               _createParticleBurst(bRow)
+                               _UTILS._createParticleBurst(bRow)
                                capturedEntry.onClickFn()
                            end)
                        end
@@ -12628,7 +12644,7 @@ do
                tabName = newName
                label.Text = newName
                title.Text = ""
-               task.spawn(function() _animateTabTitle(title, newName) end)
+               task.spawn(function() _UTILS._animateTabTitle(title, newName) end)
            end
            renameBox.Visible = false
            title.Visible = true
@@ -12643,7 +12659,7 @@ do
        addBtnRow.AutoButtonColor = false
        addBtnRow.LayoutOrder = -999999
        addBtnRow.Parent = elementsList
-       _applySoundsToButton(addBtnRow)
+       _UTILS._applySoundsToButton(addBtnRow)
        local addBtnIcon = Instance.new("Frame")
        addBtnIcon.Size = UDim2.new(0, 14, 0, 14)
        addBtnIcon.Position = UDim2.new(0, 24, 0.5, -7)
@@ -12668,7 +12684,7 @@ do
            _TweenService:Create(addBtnRow, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(24, 24, 24)}):Play()
        end)
        addBtnRow.MouseButton1Click:Connect(function()
-           _createParticleBurst(addBtnRow)
+           _UTILS._createParticleBurst(addBtnRow)
            showButtonPicker(elementsList, contentArea)
        end)
        -- Add to sidebar entries
@@ -12685,15 +12701,15 @@ do
        -- Connect tab switching
        btn.MouseButton1Click:Connect(function()
            switchTab(tabName)
-           task.spawn(function() _animateTabTitle(title, tabName) end)
+           task.spawn(function() _UTILS._animateTabTitle(title, tabName) end)
        end)
        refreshSidebarPositions()
        switchTab(tabName)
-       task.spawn(function() _animateTabTitle(title, tabName) end)
+       task.spawn(function() _UTILS._animateTabTitle(title, tabName) end)
        spawnNotification("Custom tab '" .. tabName .. "' created!", "success")
    end
    _addTabBtn.MouseButton1Click:Connect(function()
-       _createParticleBurst(_addTabBtn)
+       _UTILS._createParticleBurst(_addTabBtn)
        createCustomTab()
    end)
    -- ======= TAB REORDERING (hold to drag) ======= --
@@ -12842,35 +12858,35 @@ end
 -- ======= TAB SWITCHING ======= --
 tab1Btn.MouseButton1Click:Connect(function()
     switchTab("Search")
-   task.spawn(function() _animateTabTitle(tabTitle1, "Search") end)
+   task.spawn(function() _UTILS._animateTabTitle(tabTitle1, "Search") end)
 end)
 tab2Btn.MouseButton1Click:Connect(function()
    switchTab("WEAPONS")
-   task.spawn(function() _animateTabTitle(tabTitle2, "WEAPONS") end)
+   task.spawn(function() _UTILS._animateTabTitle(tabTitle2, "WEAPONS") end)
 end)
 tab3Btn.MouseButton1Click:Connect(function()
    switchTab("PLAYER")
-   task.spawn(function() _animateTabTitle(tabTitle3, "PLAYER") end)
+   task.spawn(function() _UTILS._animateTabTitle(tabTitle3, "PLAYER") end)
 end)
 tab4Btn.MouseButton1Click:Connect(function()
    switchTab("VISUALS")
-   task.spawn(function() _animateTabTitle(tabTitle4, "VISUALS") end)
+   task.spawn(function() _UTILS._animateTabTitle(tabTitle4, "VISUALS") end)
 end)
 tab5Btn.MouseButton1Click:Connect(function()
    switchTab("GAME")
-   task.spawn(function() _animateTabTitle(tabTitle5, "GAME") end)
+   task.spawn(function() _UTILS._animateTabTitle(tabTitle5, "GAME") end)
 end)
 tab6Btn.MouseButton1Click:Connect(function()
    switchTab("AUTOFARM")
-   task.spawn(function() _animateTabTitle(tabTitle6, "AUTOFARM") end)
+   task.spawn(function() _UTILS._animateTabTitle(tabTitle6, "AUTOFARM") end)
 end)
 tab7Btn.MouseButton1Click:Connect(function()
    switchTab("SETTINGS")
-   task.spawn(function() _animateTabTitle(tabTitle7, "SETTINGS") end)
+   task.spawn(function() _UTILS._animateTabTitle(tabTitle7, "SETTINGS") end)
 end)
 tab8Btn.MouseButton1Click:Connect(function()
    switchTab("KEYBINDS")
-   task.spawn(function() _animateTabTitle(tabTitle8, "KEYBINDS") end)
+   task.spawn(function() _UTILS._animateTabTitle(tabTitle8, "KEYBINDS") end)
 end)
 -- ======= HUB DRAGGING ======= --
 do
@@ -13018,7 +13034,7 @@ spawnNotification = function(message, notifType)
    timerBar.ZIndex = 5
    timerBar.Parent = notifContainer
    Instance.new("UICorner", timerBar).CornerRadius = UDim.new(0, 2)
-   _playSound(_NOTIF_SOUND, 3.5)
+   _UTILS._playSound(_NOTIF_SOUND, 3.5)
    task.spawn(function()
        -- Fade in: background + all elements
        _TweenService:Create(notifContainer, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
@@ -13028,8 +13044,8 @@ spawnNotification = function(message, notifType)
        _TweenService:Create(iconImage, TweenInfo.new(0.4), {ImageTransparency = 0}):Play()
        typeTitleLabel.TextTransparency = 0
        titleLabel.TextTransparency = 0
-       task.spawn(function() _animateNotifText(typeTitleLabel, typeConfig.title) end)
-       task.spawn(function() _animateNotifText(titleLabel, message) end)
+       task.spawn(function() _UTILS._animateNotifText(typeTitleLabel, typeConfig.title) end)
+       task.spawn(function() _UTILS._animateNotifText(titleLabel, message) end)
        _TweenService:Create(timerBar, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
        -- Start timer bar drain (right to left by shrinking width)
        task.wait(0.3)
@@ -13201,19 +13217,15 @@ local function showHub()
     switchTab("Home")
    task.spawn(function()
        task.wait(0.2)
-       if tabTitleHome then _animateTabTitle(tabTitleHome, "Dashboard") end
+       if tabTitleHome then _UTILS._animateTabTitle(tabTitleHome, "Dashboard") end
    end)
 end
-if isStandalone then
-   showHub()
-   spawnNotification()
-else
-   local loginEvent = loadingGui:FindFirstChild("LoginSuccess")
-   if loginEvent then
-       loginEvent.Event:Connect(function()
-           showHub()
-           spawnNotification()
-       end)
-   end
+-- Execute when loaded through the key loader (LoginSuccess event fires after key validation)
+local loginEvent = loadingGui:FindFirstChild("LoginSuccess")
+if loginEvent then
+    loginEvent.Event:Connect(function()
+        showHub()
+        spawnNotification()
+    end)
 end
 end
