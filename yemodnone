@@ -14,12 +14,14 @@ if not runtimeEnv.SCRIPT_KEY or runtimeEnv.SCRIPT_KEY == "" then
     return
 end
 
--- Optional: Verify the key hasn't been tampered with (check timestamp is recent)
-local keyAge = os.time() - (runtimeEnv.SCRIPT_KEY_VERIFIED_AT or 0)
-if keyAge > 300 then -- Key must have been verified within last 5 minutes
-    local lp = game:GetService("Players").LocalPlayer
-    if lp then lp:Kick("Please use a key to use this script.") end
-    return
+-- Optional: Verify the key hasn't been tampered with (only if loader set a timestamp)
+if runtimeEnv.SCRIPT_KEY_VERIFIED_AT then
+    local keyAge = os.time() - runtimeEnv.SCRIPT_KEY_VERIFIED_AT
+    if keyAge > 300 then -- Key must have been verified within last 5 minutes
+        local lp = game:GetService("Players").LocalPlayer
+        if lp then lp:Kick("Please use a key to use this script.") end
+        return
+    end
 end
 
 local _CoreGui = game:GetService("CoreGui")
