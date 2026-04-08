@@ -58,7 +58,6 @@ local _NOTIF_TYPES = {
 }
 -- ======= NOTIFICATION STACKING ======= --
 local _activeNotifications = {}
-do
 local _NOTIF_WIDTH = 420
 local _NOTIF_HEIGHT = 72
 local _NOTIF_GAP = 10
@@ -81,6 +80,7 @@ local function _removeNotification(entry)
    end
    _repositionNotifications()
 end
+do
 function _UTILS._playSound(soundId, vol)
    local s = Instance.new("Sound")
    s.SoundId = soundId
