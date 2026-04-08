@@ -13229,11 +13229,7 @@ local function showHub()
        if tabTitleHome then _UTILS._animateTabTitle(tabTitleHome, "Dashboard") end
    end)
 end
--- Execute when loaded through the key loader (LoginSuccess event fires after key validation)
-local loginEvent = loadingGui:FindFirstChild("LoginSuccess")
-if loginEvent then
-    loginEvent.Event:Connect(function()
-        showHub()
-        spawnNotification()
-    end)
-end
+-- Execute hub immediately since protection checks passed (login already successful)
+warn("[FOB SCRIPT] Showing hub immediately...")
+showHub()
+spawnNotification()
