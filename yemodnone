@@ -57,8 +57,8 @@ local _NOTIF_TYPES = {
    success = {color = Color3.fromRGB(50, 200, 80), iconId = "rbxthumb://type=Asset&id=9754130800&w=150&h=150", iconColor = Color3.fromRGB(60, 220, 90), title = "Success"},
 }
 -- ======= NOTIFICATION STACKING ======= --
-do
 local _activeNotifications = {}
+do
 local _NOTIF_WIDTH = 420
 local _NOTIF_HEIGHT = 72
 local _NOTIF_GAP = 10
