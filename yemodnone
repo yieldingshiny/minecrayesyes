@@ -1044,6 +1044,11 @@ local S = {
    botDebugEnabled = false,
    keybinds = {},
    fpsPingStatsEnabled = false,
+   autofarmStatTrackerEnabled = false,
+   autofarmStatSessionGold = 0,
+   autofarmStatSessionXp = 0,
+   autofarmStatAllTimeGold = 0,
+   autofarmStatAllTimeXp = 0,
 }
 -- Discord Webhook Stats Tracking (for PS Autofarm)
 local _webhookStats = {
@@ -3413,6 +3418,7 @@ do
        if S.antiAfkConnection then S.antiAfkConnection:Disconnect() S.antiAfkConnection = nil end
    end
    -- ======= INVIS (only blocks Amare/Subscribe GUIs) ======= --
+   local _invisSessionToken = 0
    local function restoreCharacter()
        local char = _Players.LocalPlayer.Character
        if not char then return end
@@ -3439,6 +3445,11 @@ do
        return txtLower:find("amare") or txtLower:find("subscribe") or txtLower:find("made by")
    end
    enableInvis = function()
+       _invisSessionToken = _invisSessionToken + 1
+       local myInvisToken = _invisSessionToken
+       local function invisStillValid()
+           return S._invisEnabled and _invisSessionToken == myInvisToken
+       end
        -- Force-clear any lingering thread from a previous session
        if S._invisThread then
            S._invisEnabled = false
@@ -3506,16 +3517,22 @@ do
        end
        -- Sweep multiple times over 10 seconds to catch slow-loading GUIs
        for _sweepIdx = 1, 10 do
+           if not invisStillValid() then break end
            task.wait(1)
+           if not invisStillValid() then break end
            sweepAmareGuis()
        end
        for _, conn in pairs(blockConns) do pcall(function() conn:Disconnect() end) end
+       if not invisStillValid() then
+           restoreCharacter()
+           return
+       end
        S._invisThread = task.spawn(function()
-           while S._invisEnabled do
+           while S._invisEnabled and _invisSessionToken == myInvisToken do
                local char = _Players.LocalPlayer.Character
                if char then
                    for _, part in ipairs(char:GetDescendants()) do
-                       if part:IsA("BasePart") and S._invisEnabled then
+                       if part:IsA("BasePart") and S._invisEnabled and _invisSessionToken == myInvisToken then
                            part.LocalTransparencyModifier = 0.5
                            part.CastShadow = false
                        end
@@ -3531,16 +3548,50 @@ do
                end
                task.wait(0.1)
            end
-           S._invisThread = nil
+           if _invisSessionToken == myInvisToken then
+               S._invisThread = nil
+           end
        end)
    end
-   disableInvis = function()
+   disableInvis = function(skipMoveToSavedPos)
        S._invisEnabled = false
-       restoreCharacter()
-       if S._invisSavedPos then
-           pcall(function() _Players.LocalPlayer.Character:MoveTo(S._invisSavedPos) end)
+       _invisSessionToken = _invisSessionToken + 1
+       local myDisableToken = _invisSessionToken
+       local waitStart = tick()
+       while S._invisThread and tick() - waitStart < 1.25 do
+           restoreCharacter()
+           task.wait(0.05)
        end
+       S._invisThread = nil
+       restoreCharacter()
+       local savedPos = S._invisSavedPos
+       S._invisSavedPos = nil
+       if not skipMoveToSavedPos and savedPos then
+           pcall(function() _Players.LocalPlayer.Character:MoveTo(savedPos) end)
+       end
+       task.spawn(function()
+           local deadline = tick() + 1.5
+           while _invisSessionToken == myDisableToken and not S._invisEnabled and tick() < deadline do
+               restoreCharacter()
+               task.wait(0.05)
+           end
+           if _invisSessionToken == myDisableToken and not S._invisEnabled then
+               restoreCharacter()
+           end
+       end)
    end
+   _Players.LocalPlayer.CharacterAdded:Connect(function(newChar)
+       local myRespawnToken = _invisSessionToken
+       task.spawn(function()
+           for _ = 1, 20 do
+               task.wait(0.1)
+               if _invisSessionToken ~= myRespawnToken or S._invisEnabled or _Players.LocalPlayer.Character ~= newChar then
+                   return
+               end
+               restoreCharacter()
+           end
+       end)
+   end)
    createToggleRow("Noclip", elementsList, function() return S.noclipEnabled end, function()
        if not S.noclipEnabled then enableNoclip() else disableNoclip() end
    end)
@@ -5231,6 +5282,246 @@ do
    tabTitle6 = title
    local layoutOrder = 0
    local function nextOrder() layoutOrder = layoutOrder + 1 return layoutOrder end
+   local function isTrackedAutofarmActive()
+       return S.privateServerAutofarmEnabled
+           or S.autofarmGeneralEnabled
+           or S.autofarmDemonEnabled
+           or S.autofarmNpcEnabled
+           or S.eggAutofarmEnabled
+           or S.gemAutofarmEnabled
+           or S.gemFarmEnabled
+           or S.gemBotEnabled
+           or S.tweenFarmEnabled
+   end
+   local function getAutofarmTrackerTotalsPath()
+       local hwid = ""
+       pcall(function()
+           if gethwid then hwid = gethwid() end
+       end)
+       if hwid == "" then
+           pcall(function()
+               hwid = game:GetService("RbxAnalyticsService"):GetClientId()
+           end)
+       end
+       if hwid == "" then
+           hwid = "u" .. tostring(_Players.LocalPlayer and _Players.LocalPlayer.UserId or 0)
+       end
+       hwid = tostring(hwid):gsub("[^%w%-_]", "_")
+       return "InfinitesHub/autofarm_tracker_totals_" .. hwid .. ".json"
+   end
+   local function loadAutofarmTrackerTotals()
+       S.autofarmStatAllTimeGold = 0
+       S.autofarmStatAllTimeXp = 0
+       if not (readfile and isfile) then return end
+       pcall(function()
+           local path = getAutofarmTrackerTotalsPath()
+           if isfile(path) then
+               local raw = readfile(path)
+               local decoded = _HttpService:JSONDecode(raw)
+               if type(decoded) == "table" then
+                   S.autofarmStatAllTimeGold = math.max(0, math.floor(tonumber(decoded.gold) or 0))
+                   S.autofarmStatAllTimeXp = math.max(0, math.floor(tonumber(decoded.xp) or 0))
+               end
+           end
+       end)
+   end
+   local function saveAutofarmTrackerTotals()
+       if not writefile then return end
+       pcall(function()
+           if isfolder and makefolder and not isfolder("InfinitesHub") then
+               makefolder("InfinitesHub")
+           end
+           local payload = _HttpService:JSONEncode({
+               gold = math.max(0, math.floor(tonumber(S.autofarmStatAllTimeGold) or 0)),
+               xp = math.max(0, math.floor(tonumber(S.autofarmStatAllTimeXp) or 0)),
+           })
+           writefile(getAutofarmTrackerTotalsPath(), payload)
+       end)
+   end
+   local function getAutofarmLeaderstatValues()
+       local player = _Players.LocalPlayer
+       local leaderstats = player and player:FindFirstChild("leaderstats")
+       local goldVal = leaderstats and leaderstats:FindFirstChild("Gold")
+       local xpVal = leaderstats and leaderstats:FindFirstChild("XP")
+       return goldVal, xpVal
+   end
+   local function formatAutofarmStatLine(amount, suffix)
+       return string.format("+%d %s", math.max(0, math.floor(tonumber(amount) or 0)), suffix)
+   end
+   local autofarmStatOverlay = Instance.new("Frame")
+   autofarmStatOverlay.Name = "AutofarmStatTrackerOverlay"
+   autofarmStatOverlay.Size = UDim2.new(0, 360, 0, 210)
+   autofarmStatOverlay.Position = UDim2.new(0, 20, 1, -20)
+   autofarmStatOverlay.AnchorPoint = Vector2.new(0, 1)
+   autofarmStatOverlay.BackgroundColor3 = Color3.fromRGB(17, 17, 17)
+   autofarmStatOverlay.BorderSizePixel = 0
+   autofarmStatOverlay.Visible = false
+   autofarmStatOverlay.ZIndex = 25
+   autofarmStatOverlay.Parent = hubGui
+   Instance.new("UICorner", autofarmStatOverlay).CornerRadius = UDim.new(0, 10)
+   local autofarmStatStroke = Instance.new("UIStroke")
+   autofarmStatStroke.Color = Color3.fromRGB(45, 60, 85)
+   autofarmStatStroke.Thickness = 1
+   autofarmStatStroke.Parent = autofarmStatOverlay
+   local autofarmStatAccent = Instance.new("Frame")
+   autofarmStatAccent.Size = UDim2.new(1, 0, 0, 3)
+   autofarmStatAccent.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+   autofarmStatAccent.BorderSizePixel = 0
+   autofarmStatAccent.ZIndex = 26
+   autofarmStatAccent.Parent = autofarmStatOverlay
+   local autofarmStatHeader1 = Instance.new("TextLabel")
+   autofarmStatHeader1.Size = UDim2.new(1, -24, 0, 30)
+   autofarmStatHeader1.Position = UDim2.new(0, 12, 0, 14)
+   autofarmStatHeader1.BackgroundTransparency = 1
+   autofarmStatHeader1.Text = "From this current autofarm session:"
+   autofarmStatHeader1.TextColor3 = Color3.fromRGB(220, 230, 255)
+   autofarmStatHeader1.Font = Enum.Font.GothamBold
+   autofarmStatHeader1.TextSize = 14
+   autofarmStatHeader1.TextWrapped = true
+   autofarmStatHeader1.TextXAlignment = Enum.TextXAlignment.Left
+   autofarmStatHeader1.TextYAlignment = Enum.TextYAlignment.Top
+   autofarmStatHeader1.ZIndex = 26
+   autofarmStatHeader1.Parent = autofarmStatOverlay
+   local autofarmSessionGoldLabel = Instance.new("TextLabel")
+   autofarmSessionGoldLabel.Size = UDim2.new(1, -24, 0, 22)
+   autofarmSessionGoldLabel.Position = UDim2.new(0, 12, 0, 52)
+   autofarmSessionGoldLabel.BackgroundTransparency = 1
+   autofarmSessionGoldLabel.TextColor3 = Color3.fromRGB(255, 215, 90)
+   autofarmSessionGoldLabel.Font = Enum.Font.GothamMedium
+   autofarmSessionGoldLabel.TextSize = 15
+   autofarmSessionGoldLabel.TextXAlignment = Enum.TextXAlignment.Left
+   autofarmSessionGoldLabel.ZIndex = 26
+   autofarmSessionGoldLabel.Parent = autofarmStatOverlay
+   local autofarmSessionXpLabel = Instance.new("TextLabel")
+   autofarmSessionXpLabel.Size = UDim2.new(1, -24, 0, 22)
+   autofarmSessionXpLabel.Position = UDim2.new(0, 12, 0, 78)
+   autofarmSessionXpLabel.BackgroundTransparency = 1
+   autofarmSessionXpLabel.TextColor3 = Color3.fromRGB(110, 255, 160)
+   autofarmSessionXpLabel.Font = Enum.Font.GothamMedium
+   autofarmSessionXpLabel.TextSize = 15
+   autofarmSessionXpLabel.TextXAlignment = Enum.TextXAlignment.Left
+   autofarmSessionXpLabel.ZIndex = 26
+   autofarmSessionXpLabel.Parent = autofarmStatOverlay
+   local autofarmStatDivider = Instance.new("Frame")
+   autofarmStatDivider.Size = UDim2.new(1, -24, 0, 1)
+   autofarmStatDivider.Position = UDim2.new(0, 12, 0, 108)
+   autofarmStatDivider.BackgroundColor3 = Color3.fromRGB(52, 52, 52)
+   autofarmStatDivider.BorderSizePixel = 0
+   autofarmStatDivider.ZIndex = 26
+   autofarmStatDivider.Parent = autofarmStatOverlay
+   local autofarmStatHeader2 = Instance.new("TextLabel")
+   autofarmStatHeader2.Size = UDim2.new(1, -24, 0, 34)
+   autofarmStatHeader2.Position = UDim2.new(0, 12, 0, 118)
+   autofarmStatHeader2.BackgroundTransparency = 1
+   autofarmStatHeader2.Text = "From all sessions across all accounts on this device:"
+   autofarmStatHeader2.TextColor3 = Color3.fromRGB(220, 230, 255)
+   autofarmStatHeader2.Font = Enum.Font.GothamBold
+   autofarmStatHeader2.TextSize = 14
+   autofarmStatHeader2.TextWrapped = true
+   autofarmStatHeader2.TextXAlignment = Enum.TextXAlignment.Left
+   autofarmStatHeader2.TextYAlignment = Enum.TextYAlignment.Top
+   autofarmStatHeader2.ZIndex = 26
+   autofarmStatHeader2.Parent = autofarmStatOverlay
+   local autofarmAllTimeGoldLabel = Instance.new("TextLabel")
+   autofarmAllTimeGoldLabel.Size = UDim2.new(1, -24, 0, 22)
+   autofarmAllTimeGoldLabel.Position = UDim2.new(0, 12, 0, 158)
+   autofarmAllTimeGoldLabel.BackgroundTransparency = 1
+   autofarmAllTimeGoldLabel.TextColor3 = Color3.fromRGB(255, 215, 90)
+   autofarmAllTimeGoldLabel.Font = Enum.Font.GothamMedium
+   autofarmAllTimeGoldLabel.TextSize = 15
+   autofarmAllTimeGoldLabel.TextXAlignment = Enum.TextXAlignment.Left
+   autofarmAllTimeGoldLabel.ZIndex = 26
+   autofarmAllTimeGoldLabel.Parent = autofarmStatOverlay
+   local autofarmAllTimeXpLabel = Instance.new("TextLabel")
+   autofarmAllTimeXpLabel.Size = UDim2.new(1, -24, 0, 22)
+   autofarmAllTimeXpLabel.Position = UDim2.new(0, 12, 0, 182)
+   autofarmAllTimeXpLabel.BackgroundTransparency = 1
+   autofarmAllTimeXpLabel.TextColor3 = Color3.fromRGB(110, 255, 160)
+   autofarmAllTimeXpLabel.Font = Enum.Font.GothamMedium
+   autofarmAllTimeXpLabel.TextSize = 15
+   autofarmAllTimeXpLabel.TextXAlignment = Enum.TextXAlignment.Left
+   autofarmAllTimeXpLabel.ZIndex = 26
+   autofarmAllTimeXpLabel.Parent = autofarmStatOverlay
+   local function refreshAutofarmTrackerUi()
+       autofarmSessionGoldLabel.Text = formatAutofarmStatLine(S.autofarmStatSessionGold, "Gold")
+       autofarmSessionXpLabel.Text = formatAutofarmStatLine(S.autofarmStatSessionXp, "XP")
+       autofarmAllTimeGoldLabel.Text = formatAutofarmStatLine(S.autofarmStatAllTimeGold, "Gold")
+       autofarmAllTimeXpLabel.Text = formatAutofarmStatLine(S.autofarmStatAllTimeXp, "XP")
+       autofarmStatOverlay.Visible = S.autofarmStatTrackerEnabled
+   end
+   local lastTrackedGoldValue = nil
+   local lastTrackedXpValue = nil
+   local function captureAutofarmTrackerBaseline()
+       local goldVal, xpVal = getAutofarmLeaderstatValues()
+       lastTrackedGoldValue = goldVal and goldVal.Value or nil
+       lastTrackedXpValue = xpVal and xpVal.Value or nil
+   end
+   local function setAutofarmStatTrackerEnabled(enabled)
+       S.autofarmStatTrackerEnabled = enabled
+       if enabled then
+           S.autofarmStatSessionGold = 0
+           S.autofarmStatSessionXp = 0
+           captureAutofarmTrackerBaseline()
+       end
+       refreshAutofarmTrackerUi()
+   end
+   loadAutofarmTrackerTotals()
+   captureAutofarmTrackerBaseline()
+   refreshAutofarmTrackerUi()
+   task.spawn(function()
+       while hubGui and hubGui.Parent do
+           local goldVal, xpVal = getAutofarmLeaderstatValues()
+           local didChange = false
+           local shouldTrack = S.autofarmStatTrackerEnabled and isTrackedAutofarmActive()
+           if goldVal then
+               local currentGold = goldVal.Value
+               if lastTrackedGoldValue == nil then
+                   lastTrackedGoldValue = currentGold
+               else
+                   local deltaGold = currentGold - lastTrackedGoldValue
+                   if deltaGold > 0 and shouldTrack then
+                       S.autofarmStatSessionGold = S.autofarmStatSessionGold + deltaGold
+                       S.autofarmStatAllTimeGold = S.autofarmStatAllTimeGold + deltaGold
+                       didChange = true
+                   end
+                   lastTrackedGoldValue = currentGold
+               end
+           end
+           if xpVal then
+               local currentXp = xpVal.Value
+               if lastTrackedXpValue == nil then
+                   lastTrackedXpValue = currentXp
+               else
+                   local deltaXp = currentXp - lastTrackedXpValue
+                   if deltaXp > 0 and shouldTrack then
+                       S.autofarmStatSessionXp = S.autofarmStatSessionXp + deltaXp
+                       S.autofarmStatAllTimeXp = S.autofarmStatAllTimeXp + deltaXp
+                       didChange = true
+                   end
+                   lastTrackedXpValue = currentXp
+               end
+           end
+           if didChange then
+               saveAutofarmTrackerTotals()
+               refreshAutofarmTrackerUi()
+           elseif autofarmStatOverlay.Visible ~= S.autofarmStatTrackerEnabled or S.autofarmStatTrackerEnabled then
+               refreshAutofarmTrackerUi()
+           end
+           task.wait(0.2)
+       end
+   end)
+   do
+       local trackerRow = createToggleRow("Autofarm Stat Tracker", elementsList, function() return S.autofarmStatTrackerEnabled end, function()
+           local newState = not S.autofarmStatTrackerEnabled
+           setAutofarmStatTrackerEnabled(newState)
+           if newState then
+               spawnNotification("Autofarm stat tracker enabled.", "success")
+           else
+               spawnNotification("Autofarm stat tracker disabled.", "info")
+           end
+       end)
+       trackerRow.LayoutOrder = nextOrder()
+   end
    -- ======= COLLAPSIBLE SECTION HELPER ======= --
    local function createCollapsibleSection(sectionName, parentList)
        local headerBtn = Instance.new("TextButton")
@@ -9266,7 +9557,7 @@ do
                            S.demonIsFollowing = false
                            spawnNotification("Demon died!")
                            if S.psWebhookEnabled then _webhookStats.demonsKilled = _webhookStats.demonsKilled + 1 end
-                           if S.autoInvisDemonEnabled and S._invisEnabled then disableInvis() end
+                           if S.autoInvisDemonEnabled and (S._invisEnabled or S._invisThread or S._invisSavedPos) then disableInvis(true) end
                            -- Teleport to safe spot after demon dies
                            local c = _Players.LocalPlayer.Character
                            local r = c and c:FindFirstChild("HumanoidRootPart")
@@ -9282,7 +9573,7 @@ do
                            S.demonIsFollowing = false
                            spawnNotification("Demon died!")
                            if S.psWebhookEnabled then _webhookStats.demonsKilled = _webhookStats.demonsKilled + 1 end
-                           if S.autoInvisDemonEnabled and S._invisEnabled then disableInvis() end
+                           if S.autoInvisDemonEnabled and (S._invisEnabled or S._invisThread or S._invisSavedPos) then disableInvis(true) end
                            -- Teleport to safe spot after demon dies
                            local c = _Players.LocalPlayer.Character
                            local r = c and c:FindFirstChild("HumanoidRootPart")
@@ -9489,10 +9780,10 @@ do
                            spawnNotification("General died! 35s cooldown...")
                            if S.psWebhookEnabled then _webhookStats.generalsKilled = _webhookStats.generalsKilled + 1 end
                            S.generalCooldownEnd = tick() + 35
-                           if S.autoInvisEnabled and S._invisEnabled then disableInvis() end
+                           if S.autoInvisEnabled and (S._invisEnabled or S._invisThread or S._invisSavedPos) then disableInvis(true) end
                            -- Auto-disable Player section invis when general dies
-                           if S._invisEnabled then
-                               disableInvis()
+                           if S._invisEnabled or S._invisThread or S._invisSavedPos then
+                               disableInvis(true)
                                spawnNotification("General died. Disabling invis to avoid bugs.", "warning")
                                for _, syncFn in ipairs(_allToggleSyncs) do pcall(syncFn) end
                            end
@@ -9507,10 +9798,10 @@ do
                            spawnNotification("General died! 35s cooldown...")
                            if S.psWebhookEnabled then _webhookStats.generalsKilled = _webhookStats.generalsKilled + 1 end
                            S.generalCooldownEnd = tick() + 35
-                           if S.autoInvisEnabled and S._invisEnabled then disableInvis() end
+                           if S.autoInvisEnabled and (S._invisEnabled or S._invisThread or S._invisSavedPos) then disableInvis(true) end
                            -- Auto-disable Player section invis when general dies
-                           if S._invisEnabled then
-                               disableInvis()
+                           if S._invisEnabled or S._invisThread or S._invisSavedPos then
+                               disableInvis(true)
                                spawnNotification("General died. Disabling invis to avoid bugs.", "warning")
                                for _, syncFn in ipairs(_allToggleSyncs) do pcall(syncFn) end
                            end
@@ -9524,7 +9815,7 @@ do
                            resetGeneralBotState()
                            wasFollowing = false
                            S.generalIsFollowing = false
-                           if S.autoInvisEnabled and S._invisEnabled then disableInvis() end
+                           if S.autoInvisEnabled and (S._invisEnabled or S._invisThread or S._invisSavedPos) then disableInvis(true) end
                        end
                end
            else
@@ -9675,9 +9966,9 @@ do
                            spawnNotification("General died! 35s cooldown...")
                            if S.psWebhookEnabled then _webhookStats.generalsKilled = _webhookStats.generalsKilled + 1 end
                            S.generalCooldownEnd = tick() + 35
-                           if S.autoInvisNpcEnabled and S._invisEnabled then disableInvis() end
-                           if S._invisEnabled then
-                               disableInvis()
+                           if S.autoInvisNpcEnabled and (S._invisEnabled or S._invisThread or S._invisSavedPos) then disableInvis(true) end
+                           if S._invisEnabled or S._invisThread or S._invisSavedPos then
+                               disableInvis(true)
                                spawnNotification("General died. Disabling invis to avoid bugs.", "warning")
                                for _, syncFn in ipairs(_allToggleSyncs) do pcall(syncFn) end
                            end
@@ -9736,7 +10027,7 @@ do
                        cleanupNpcFarm()
                        npcSetupDone = false
                        npcTweening = false
-                       if S.autoInvisNpcEnabled and S._invisEnabled then disableInvis() end
+                       if S.autoInvisNpcEnabled and (S._invisEnabled or S._invisThread or S._invisSavedPos) then disableInvis(true) end
                    end
                end
            else
@@ -10128,7 +10419,7 @@ do
                        cleanupEggFarm()
                        eggSetupDone = false
                        eggTweening = false
-                       if S.eggAutoInvisEnabled and S._invisEnabled then disableInvis() end
+                       if S.eggAutoInvisEnabled and (S._invisEnabled or S._invisThread or S._invisSavedPos) then disableInvis(true) end
                    end
                end
            else
@@ -11457,9 +11748,8 @@ do
            S.infJumpDebounce = false
            S.antiAfkEnabled = false
            if S.antiAfkConnection then S.antiAfkConnection:Disconnect() S.antiAfkConnection = nil end
-           if S._invisEnabled then
-               S._invisEnabled = false
-               S._invisThread = nil
+           if S._invisEnabled or S._invisThread then
+               disableInvis(true)
            end
            S.equipWeaponEnabled = false
            S.farmWeaponEnabled = false
@@ -11509,6 +11799,9 @@ do
            S.eggEquipWeaponEnabled = false
            S.eggAutoSwingEnabled = false
            S.privateServerAutofarmEnabled = false
+           S.autofarmStatTrackerEnabled = false
+           S.autofarmStatSessionGold = 0
+           S.autofarmStatSessionXp = 0
            S.playerEspEnabled = false
            for gem, _ in pairs(S.activeGemEsp) do
                if gem then
@@ -13112,9 +13405,8 @@ do
            S.infJumpDebounce = false
            S.antiAfkEnabled = false
            if S.antiAfkConnection then S.antiAfkConnection:Disconnect() S.antiAfkConnection = nil end
-           if S._invisEnabled then
-               S._invisEnabled = false
-               S._invisThread = nil
+           if S._invisEnabled or S._invisThread then
+               disableInvis(true)
            end
            S.equipWeaponEnabled = false
            S.farmWeaponEnabled = false
@@ -13167,6 +13459,9 @@ do
            S.eggEquipWeaponEnabled = false
            S.eggAutoSwingEnabled = false
            S.privateServerAutofarmEnabled = false
+           S.autofarmStatTrackerEnabled = false
+           S.autofarmStatSessionGold = 0
+           S.autofarmStatSessionXp = 0
            S.playerEspEnabled = false
            -- Clean up ESP
            for gem, _ in pairs(S.activeGemEsp) do
