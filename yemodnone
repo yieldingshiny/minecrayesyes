@@ -2,15 +2,39 @@
 warn("[FOB SCRIPT] Starting...")
 local runtimeEnv = (getgenv and getgenv()) or _G
 local loadingGui = runtimeEnv.loadingGui
+local _STANDALONE_DEBUG_KEY = "" -- Paste a valid key here to run this file without the key loader for debugging.
 warn("[FOB SCRIPT] loadingGui = " .. tostring(loadingGui))
 warn("[FOB SCRIPT] SCRIPT_KEY = " .. tostring(runtimeEnv.SCRIPT_KEY))
 
 -- PROTECTION: Prevent standalone execution - script must be loaded through the key loader
 if not (loadingGui and loadingGui:FindFirstChild("LoginSuccess")) then
-    warn("[FOB SCRIPT] No loadingGui or LoginSuccess - kicking player")
-    local lp = game:GetService("Players").LocalPlayer
-    if lp then lp:Kick("Please use a key to use this script.") end
-    return
+    local standaloneKey = tostring(_STANDALONE_DEBUG_KEY or ""):match("^%s*(.-)%s*$")
+    if standaloneKey ~= "" then
+        warn("[FOB SCRIPT] Standalone debug mode enabled")
+        local players = game:GetService("Players")
+        local coreGui = game:GetService("CoreGui")
+        local lp = players.LocalPlayer
+        local fallbackGui = Instance.new("ScreenGui")
+        fallbackGui.Name = "CubeLoadingScreen"
+        fallbackGui.ResetOnSpawn = false
+        fallbackGui.IgnoreGuiInset = true
+        local parentOk = pcall(function() fallbackGui.Parent = coreGui end)
+        if not parentOk and lp then
+            fallbackGui.Parent = lp:WaitForChild("PlayerGui")
+        end
+        local loginSuccess = Instance.new("BindableEvent")
+        loginSuccess.Name = "LoginSuccess"
+        loginSuccess.Parent = fallbackGui
+        runtimeEnv.loadingGui = fallbackGui
+        runtimeEnv.SCRIPT_KEY = standaloneKey
+        runtimeEnv.SCRIPT_KEY_VERIFIED_AT = os.time()
+        loadingGui = fallbackGui
+    else
+        warn("[FOB SCRIPT] No loadingGui or LoginSuccess - kicking player")
+        local lp = game:GetService("Players").LocalPlayer
+        if lp then lp:Kick("Please use a key to use this script.") end
+        return
+    end
 end
 warn("[FOB SCRIPT] Protection passed - continuing load")
 
@@ -5282,6 +5306,7 @@ do
    tabTitle6 = title
    local layoutOrder = 0
    local function nextOrder() layoutOrder = layoutOrder + 1 return layoutOrder end
+   do
    local function isTrackedAutofarmActive()
        return S.privateServerAutofarmEnabled
            or S.autofarmGeneralEnabled
@@ -5521,6 +5546,7 @@ do
            end
        end)
        trackerRow.LayoutOrder = nextOrder()
+   end
    end
    -- ======= COLLAPSIBLE SECTION HELPER ======= --
    local function createCollapsibleSection(sectionName, parentList)
