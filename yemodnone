@@ -5481,9 +5481,8 @@ do
                    if not S.psFastModeEnabled then
                        -- Wait until on Human or Orc before NPC phase (same rule as standalone NPC autofarm)
                        while S.privateServerAutofarmEnabled and not S.psFastModeEnabled do
-                           local pt = _Players.LocalPlayer.Team
-                           local tn = pt and pt.Name:lower() or ""
-                           if tn:find("human") or tn:find("orc") then
+                           local teamName = getCurrentWarTeamName()
+                           if teamName == "human" or teamName == "orc" then
                                break
                            end
                            task.wait(0.5)
@@ -7933,6 +7932,24 @@ do
    end
 
    -- ======= SHARED HELPERS ======= --
+   local function getCurrentWarTeamName()
+       local playerTeam = _Players.LocalPlayer.Team
+       if playerTeam then
+           local teamName = playerTeam.Name:lower()
+           if teamName:find("human") then return "human" end
+           if teamName:find("orc") then return "orc" end
+       end
+       -- Some respawns place the player under Characters.Human/Orc before Player.Team updates.
+       local unbreakable = workspace:FindFirstChild("Unbreakable")
+       local chars = unbreakable and unbreakable:FindFirstChild("Characters")
+       if not chars then return nil end
+       local playerName = _Players.LocalPlayer.Name
+       local humanTeam = chars:FindFirstChild("Human")
+       if humanTeam and humanTeam:FindFirstChild(playerName) then return "human" end
+       local orcTeam = chars:FindFirstChild("Orc")
+       if orcTeam and orcTeam:FindFirstChild(playerName) then return "orc" end
+       return nil
+   end
    local function findOppositeGeneral()
        local root = _Players.LocalPlayer.Character and _Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
        if not root then return nil, nil end
@@ -7942,14 +7959,11 @@ do
        local humanGeneral = chars:FindFirstChild("Human") and chars.Human:FindFirstChild("Human General")
        local orcGeneral = chars:FindFirstChild("Orc") and chars.Orc:FindFirstChild("Orc General")
        local targetGeneral = nil
-       local playerTeam = _Players.LocalPlayer.Team
-       if playerTeam then
-           local teamName = playerTeam.Name:lower()
-           if teamName:find("human") then
-               targetGeneral = orcGeneral
-           elseif teamName:find("orc") then
-               targetGeneral = humanGeneral
-           end
+       local teamName = getCurrentWarTeamName()
+       if teamName == "human" then
+           targetGeneral = orcGeneral
+       elseif teamName == "orc" then
+           targetGeneral = humanGeneral
        end
        if not targetGeneral then
            if humanGeneral and orcGeneral then
@@ -8000,12 +8014,9 @@ do
        local chars = unbreakable and unbreakable:FindFirstChild("Characters")
        if not chars then return {} end
        local enemyTeamName = nil
-       local playerTeam = _Players.LocalPlayer.Team
-       if playerTeam then
-           local teamName = playerTeam.Name:lower()
-           if teamName:find("human") then enemyTeamName = "Orc"
-           elseif teamName:find("orc") then enemyTeamName = "Human" end
-       end
+       local teamName = getCurrentWarTeamName()
+       if teamName == "human" then enemyTeamName = "Orc"
+       elseif teamName == "orc" then enemyTeamName = "Human" end
        -- NPC autofarm / PS logic only considers valid war teams; avoids neutral/Undead blanket targeting
        if not enemyTeamName then
            return {}
@@ -9339,9 +9350,8 @@ do
                    if targetGeneral and targetPart and isTargetAlive(targetGeneral) then
                        if not wasFollowing then
                            -- Require Human or Orc team before proceeding with setup
-                           local playerTeam = _Players.LocalPlayer.Team
-                           local teamName = playerTeam and playerTeam.Name:lower() or ""
-                           if not (teamName:find("human") or teamName:find("orc")) then
+                           local teamName = getCurrentWarTeamName()
+                           if teamName ~= "human" and teamName ~= "orc" then
                                task.wait(0.3)
                                continue
                            end
@@ -9590,9 +9600,8 @@ do
                    continue
                end
                -- Require Human or Orc team before proceeding
-               local playerTeam = _Players.LocalPlayer.Team
-               local teamName = playerTeam and playerTeam.Name:lower() or ""
-               if not (teamName:find("human") or teamName:find("orc")) then
+               local teamName = getCurrentWarTeamName()
+               if teamName ~= "human" and teamName ~= "orc" then
                    task.wait(0.3)
                    continue
                end
@@ -9813,24 +9822,19 @@ do
                end
            end
            -- Check non-priority easter NPCs in Characters folders (OPPOSITE team only)
-           local chars = unbreakable:FindFirstChild("Characters")
-           if chars then
-               local enemyTeams = {}
-               local playerTeam = _Players.LocalPlayer.Team
-               if playerTeam then
-                   local tName = playerTeam.Name:lower()
-                   if tName:find("human") then
+               local chars = unbreakable:FindFirstChild("Characters")
+               if chars then
+                   local enemyTeams = {}
+                   local teamName = getCurrentWarTeamName()
+                   if teamName == "human" then
                        table.insert(enemyTeams, "Orc")
                        table.insert(enemyTeams, "Undead")
-                   elseif tName:find("orc") then
+                   elseif teamName == "orc" then
                        table.insert(enemyTeams, "Human")
                        table.insert(enemyTeams, "Undead")
                    else
                        enemyTeams = {"Human", "Orc", "Undead"}
                    end
-               else
-                   enemyTeams = {"Human", "Orc", "Undead"}
-               end
                for _, teamName in ipairs(enemyTeams) do
                    local teamFolder = chars:FindFirstChild(teamName)
                    if teamFolder then
@@ -9963,9 +9967,8 @@ do
        while true do
            if S.eggAutofarmEnabled then
                -- Require Human or Orc team before doing anything
-               local playerTeam = _Players.LocalPlayer.Team
-               local teamName = playerTeam and playerTeam.Name:lower() or ""
-               if not (teamName:find("human") or teamName:find("orc")) then
+               local teamName = getCurrentWarTeamName()
+               if teamName ~= "human" and teamName ~= "orc" then
                    cleanupEggFarm()
                    eggSetupDone = false
                    task.wait(0.3)
