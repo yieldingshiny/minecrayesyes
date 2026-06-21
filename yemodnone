@@ -1,4 +1,4 @@
--- Get loadingGui from global environment (set by key loader)
+-- this script was for a game that is now taken down lmao
 warn("[FOB SCRIPT] Starting...")
 local runtimeEnv = (getgenv and getgenv()) or _G
 local loadingGui = runtimeEnv.loadingGui
@@ -6,7 +6,6 @@ local _STANDALONE_DEBUG_KEY = "" -- Paste a valid key here to run this file with
 warn("[FOB SCRIPT] loadingGui = " .. tostring(loadingGui))
 warn("[FOB SCRIPT] SCRIPT_KEY = " .. tostring(runtimeEnv.SCRIPT_KEY))
 
--- PROTECTION: Prevent standalone execution - script must be loaded through the key loader
 if not (loadingGui and loadingGui:FindFirstChild("LoginSuccess")) then
     local standaloneKey = tostring(_STANDALONE_DEBUG_KEY or ""):match("^%s*(.-)%s*$")
     if standaloneKey ~= "" then
